@@ -22,12 +22,21 @@
 # and capped, the pool is small, and the application is never started.
 #
 # Usage:
-#   bin/setup-server
+#   bin/setup-server                 deps, compile, create and migrate
+#   bin/setup-server --release       deps, compile and build a release; no database
 #   MEMORY_MAX=1G bin/setup-server
 #
+# --release is the production path. It touches no database, so it can run before
+# credentials exist, and the migration is a separate step with bin/migrate.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+
+RELEASE_ONLY=false
+if [ "${1:-}" = "--release" ]; then
+  RELEASE_ONLY=true
+  MIX_ENV="${MIX_ENV:-prod}"
+fi
 
 MEMORY_MAX="${MEMORY_MAX:-768M}"
 POOL_SIZE="${POOL_SIZE:-2}"
@@ -38,9 +47,12 @@ export ELIXIR_ERL_OPTIONS="${ELIXIR_ERL_OPTIONS:-+S 1:1}"
 export MAKEFLAGS="${MAKEFLAGS:--j1}"
 export MIX_ENV="${MIX_ENV:-dev}"
 
-# .env is read by every mix command; check it here too so this script fails
-# with an instruction rather than with a wall of Postgrex connection errors.
-if [ -f .env ] && grep -qE '^\s*(export\s+)?(DATABASE_URL|PGUSER)=' .env; then
+# .env is read by every mix command; check it here too so this script fails with
+# an instruction rather than with a wall of Postgrex connection errors. Skipped
+# for --release, which never opens a connection.
+if [ "$RELEASE_ONLY" = true ]; then
+  :
+elif [ -f .env ] && grep -qE '^\s*(export\s+)?(DATABASE_URL|PGUSER)=' .env; then
   :
 elif [ -z "${DATABASE_URL:-}" ] && [ -z "${PGUSER:-}" ]; then
   cat >&2 <<'MSG'
@@ -84,9 +96,18 @@ run mix deps.get
 echo "==> compiling"
 run mix compile
 
-echo "==> creating and migrating the database"
-run mix setup.server
+if [ "$RELEASE_ONLY" = true ]; then
+  echo "==> building the release"
+  run mix release --overwrite
 
-echo
-echo "Done. Nothing else on this machine was started or connected to."
-echo "Run it with:  PORT=4005 mix phx.server"
+  echo
+  echo "Done. No database was touched."
+  echo "Next: set /etc/email-provider.env, then run bin/migrate. See DEPLOY.md."
+else
+  echo "==> creating and migrating the database"
+  run mix setup.server
+
+  echo
+  echo "Done. Nothing else on this machine was started or connected to."
+  echo "Run it with:  PORT=4005 mix phx.server"
+fi

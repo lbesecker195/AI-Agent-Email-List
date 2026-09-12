@@ -1,9 +1,49 @@
 import Config
 
-# Also here, not just config.exs: in a release config.exs was evaluated when
-# the release was built, and this file is the one that runs on the machine.
-Code.require_file("config_helpers.exs", __DIR__)
-EmailProvider.ConfigHelpers.load_dotenv!()
+# Load .env here as well as in config.exs, because in a release config.exs was
+# evaluated when the release was built and this file is the one that runs on the
+# machine.
+#
+# Written out inline rather than calling config/config_helpers.exs: a release
+# ships this file and nothing else from config/, so requiring a sibling here
+# fails at boot with `enoent` on a path inside the release. Production normally
+# takes its settings from the systemd EnvironmentFile, so this matters only when
+# somebody runs the release by hand — which is exactly when a confusing boot
+# crash is least welcome.
+case File.read(Path.join(File.cwd!(), ".env")) do
+  {:error, _} ->
+    # No file is the normal case in production, where systemd supplies the
+    # environment. Not an error.
+    :ok
+
+  {:ok, contents} ->
+    for line <- String.split(contents, ["\n", "\r\n"]),
+        line = String.trim(line),
+        line != "",
+        not String.starts_with?(line, "#"),
+        [key, value] <- [String.split(String.replace_prefix(line, "export ", ""), "=", parts: 2)],
+        key = String.trim(key),
+        key != "" do
+      value = String.trim(value)
+
+      unquoted =
+        cond do
+          String.length(value) > 1 and String.starts_with?(value, "\"") and
+              String.ends_with?(value, "\"") ->
+            String.slice(value, 1..-2//1)
+
+          String.length(value) > 1 and String.starts_with?(value, "'") and
+              String.ends_with?(value, "'") ->
+            String.slice(value, 1..-2//1)
+
+          true ->
+            value
+        end
+
+      # The real environment wins. A file is a default, not an override.
+      if is_nil(System.get_env(key)), do: System.put_env(key, unquoted)
+    end
+end
 
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
@@ -141,20 +181,55 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  host = System.get_env("PHX_HOST") || "example.com"
+  host = System.get_env("PHX_HOST") || "ai.agentemaillist.com"
+
+  bind_ip =
+    case System.get_env("BIND_IP") do
+      nil ->
+        {127, 0, 0, 1}
+
+      "" ->
+        {127, 0, 0, 1}
+
+      value ->
+        value
+        |> String.to_charlist()
+        |> :inet.parse_address()
+        |> case do
+          {:ok, address} -> address
+          {:error, _} -> raise "BIND_IP is not a valid IP address: #{inspect(value)}"
+        end
+    end
 
   config :email_provider, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
+
+  # llms.txt normally reports whatever host the agent actually reached, which is
+  # right in nearly every case. Set this to pin it to one canonical URL, for
+  # instance when several names point at the same service.
+  if url = System.get_env("PUBLIC_BASE_URL") do
+    config :email_provider, :public_base_url, url
+  end
 
   config :email_provider, EmailProviderWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [
-      # Enable IPv6 and bind on all interfaces.
-      # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
-      # See the documentation on https://bandit.hexdocs.pm/Bandit.html#t:options/0
-      # for details about using IPv6 vs IPv4 and loopback vs public addresses.
-      ip: {0, 0, 0, 0, 0, 0, 0, 0}
+      # Loopback by default, because nginx sits in front and there is no reason
+      # for the application port to be reachable from the internet directly.
+      # Set BIND_IP=0.0.0.0 to expose it, which is only useful before a reverse
+      # proxy is in place.
+      ip: bind_ip
     ],
     secret_key_base: secret_key_base
+
+  # Redirecting plaintext to HTTPS is right once TLS exists and a trap before
+  # then: nginx on port 80 sets X-Forwarded-Proto: http, the app redirects to a
+  # scheme nothing is listening on, and the result looks like a broken
+  # application rather than a missing certificate. So this is opt-in. Turn it on
+  # after certbot has issued, not before.
+  if System.get_env("FORCE_SSL") == "true" do
+    config :email_provider, EmailProviderWeb.Endpoint,
+      force_ssl: [rewrite_on: [:x_forwarded_proto], hsts: true]
+  end
 
   # ## SSL Support
   #

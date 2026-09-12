@@ -1,0 +1,62 @@
+# systemd unit for the mail API release.
+#
+#   sudo cp deploy/email-provider.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now email-provider
+#
+# Adjust User, WorkingDirectory and ExecStart if you deploy somewhere other than
+# /var/www/HoneyTrap/AI-Agent-Email-List as the `mailer` user.
+
+[Unit]
+Description=Agent Email List mail API
+# Wants= rather than Requires=: if Postgres restarts we want to keep running and
+# reconnect, not be torn down with it.
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
+
+[Service]
+Type=exec
+User=mailer
+Group=mailer
+WorkingDirectory=/var/www/HoneyTrap/AI-Agent-Email-List
+
+# Secrets live here, root-owned and chmod 600 — never in this unit file, which
+# is world-readable.
+EnvironmentFile=/etc/email-provider.env
+
+ExecStart=/var/www/HoneyTrap/AI-Agent-Email-List/_build/prod/rel/email_provider/bin/server
+
+# An OTP release supervises its own processes; systemd only needs to restart the
+# whole VM if it actually exits. RestartSec keeps a crash loop from hammering
+# Postgres.
+Restart=on-failure
+RestartSec=5
+
+# Give in-flight requests and SMTP conversations a moment to finish.
+TimeoutStopSec=30
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=email-provider
+
+# Binding SMTP on 25 and submission on 587 needs this, and it is the reason the
+# service can still run as an unprivileged user. Without it the listeners log
+# "permission denied" and are skipped, and the API keeps serving.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Hardening. The app writes nothing outside its own tree in production: the
+# local mail writer is a development adapter.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/HoneyTrap/AI-Agent-Email-List
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
