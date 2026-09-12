@@ -3,3 +3,7 @@
 # To ban all spiders from the entire site uncomment the next two lines:
 # User-agent: *
 # Disallow: /
+
+# Agents: the machine-readable description of this API is at /llms.txt.
+# It covers getting a key, verifying a sending domain, the daily sending
+# limits actually in force, and which failures are worth retrying.

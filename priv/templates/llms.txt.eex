@@ -1,0 +1,427 @@
+# HoneyTrap Mail — email sending API
+
+> Send email from your own domain over a REST API, receive it back, and read
+> what happened to it. Mailgun-shaped, so a Mailgun client mostly works if you
+> point it here. Self-serve: one POST gets you a key.
+
+This file is for AI agents. The sending limits below are read from the running
+service, so they are the limits you will actually meet — not a number somebody
+typed into a document once.
+
+Base URL: <%= @base_url %>
+Health check, no key needed: <%= @base_url %>/health
+
+## Read this before you write any code
+
+Two things stop a first send, and both happen before you get to write a
+message. Neither is a bug in your request.
+
+**1. A domain has to be verified in DNS before it can send.** You add a domain,
+the API hands you records, someone publishes them, you call verify. Until that
+is done every send returns **403 `domain_not_verified`** and retrying will not
+help. Publishing DNS usually needs a human with access to the registrar. If you
+are working on someone's behalf, get this started first — it is the long pole,
+and everything else here takes seconds.
+
+**2. A verified domain still starts at <%= @first_cap %> messages a day.**
+New domains that open at volume get filtered by receivers, so every domain
+climbs a ladder. If your job is "send this to 400 people", it will not happen
+today, and finding that out part-way through is worse than knowing now. Check
+`/v3/:domain/limits` before you plan.
+
+The way to develop against this without either problem is test mode. Read on.
+
+## Getting a key
+
+```bash
+curl -X POST <%= @base_url %>/v1/accounts \
+  -d 'email=you@company.com' \
+  -d 'password=a sufficiently long password'
+```
+
+Returns `api_key` once and never again — only a hash is stored, so it cannot be
+resent. If you lose it, mint another at `POST /v1/api-keys` with a key you still
+have.
+
+Send it either way. Both work on every endpoint:
+
+```
+Authorization: Bearer <key>
+```
+```
+--user 'api:<key>'
+```
+
+The second is HTTP Basic with the literal username `api`, which is what Mailgun
+clients send. The key never goes in the URL.
+
+Keys carry scopes: `messages:send`, `messages:read`, `domains:read`,
+`domains:write`, `events:read`, `suppressions:read`, `suppressions:write`,
+`templates:write`, `routes:write`, `webhooks:write`. A key made by
+`POST /v1/accounts` has all of them. Mint narrower ones with
+`POST /v1/api-keys` and a `scopes` list. A key used outside its scopes gets
+**403**, and that is a permanent answer.
+
+There is also `POST /v1/accounts/login`, which trades a password for a session
+token. **That is not for you.** It is how a person reaches an account page, and
+it expires. Hold an API key and nothing else: keys do not expire, and minting
+sessions from a script leaves credentials nobody revokes.
+
+## Adding a domain
+
+```bash
+curl -X POST <%= @base_url %>/v3/domains \
+  --user 'api:KEY' \
+  -d 'name=mail.yourcompany.com'
+```
+
+The response carries `sending_dns_records` and an `smtp_password` shown once.
+Two of those records are marked `required: true` — an SPF `TXT` including
+`<%= @spf_host %>`, and a DKIM `TXT` holding the public half of a keypair minted
+for this domain. The `MX` record pointing at `<%= @mx_host %>` is only needed if
+you want to receive mail; it does not hold up sending.
+
+Hand the records to whoever runs the DNS. Then:
+
+```bash
+curl -X PUT <%= @base_url %>/v3/domains/mail.yourcompany.com/verify --user 'api:KEY'
+```
+
+`200` with `state: "active"` means it can send. `202` means the records are not
+visible yet. DNS takes minutes to hours to propagate — poll this every few
+minutes, not every few seconds, and tell your user you are waiting rather than
+going quiet. A domain whose records later disappear drops back to `unverified`
+and stops sending, which is deliberate.
+
+## Sending
+
+```bash
+curl -X POST <%= @base_url %>/v3/mail.yourcompany.com/messages \
+  --user 'api:KEY' \
+  -F from='Ada <ada@mail.yourcompany.com>' \
+  -F to=someone@elsewhere.com \
+  -F subject='Hello' \
+  -F text='Hello there.'
+```
+
+`from` must be an address at the domain in the path, or a subdomain of it.
+You cannot send as someone else's domain, and trying gets **403
+`forbidden_sender`**.
+
+A `200` means **queued, not delivered**. Delivery happens on a worker and the
+outcome arrives as an event. See "Finding out what happened".
+
+Useful fields:
+
+| Field | Does |
+|---|---|
+| `html` | HTML body. Send with `text` for a multipart message. |
+| `cc`, `bcc` | Bcc goes on the envelope only, never into the headers. |
+| `o:testmode=yes` | Accept and store, send nothing, spend no allowance. |
+| `o:deliverytime` | Schedule it. RFC 2822 or ISO 8601, at most 3 days out. |
+| `o:tag` | Tag the message. Repeatable. Filters events later. |
+| `h:X-Whatever` | A header to put on the message. |
+| `v:anything` | A variable that rides along and comes back on its events. |
+| `recipient-variables` | Per-recipient personalisation. See "Sending to many". |
+| `template`, `t:variables` | Use a stored template instead of a body. |
+
+## Start in test mode
+
+```bash
+curl -X POST <%= @base_url %>/v3/mail.yourcompany.com/messages \
+  --user 'api:KEY' \
+  -F from='ada@mail.yourcompany.com' \
+  -F to=someone@elsewhere.com \
+  -F subject='Shape check' \
+  -F text='Does this request parse?' \
+  -F o:testmode=yes
+```
+
+This is the most useful thing on this page for you. It runs the whole
+pipeline — validation, sender check, content screening, suppression list — and
+then does not send. It costs no warmup allowance and touches no reputation, so
+you can get the request shape right as many times as you like.
+
+Get a `200` in test mode before you send anything real. A malformed request
+that burns three of a new domain's ten daily sends is an expensive way to find
+a typo.
+
+## Sending to many
+
+Do **not** loop one request per recipient. Send one request with
+`recipient-variables` and the service splits it into one message per person,
+each with its own body, its own Message-ID and its own event stream:
+
+```bash
+curl -X POST <%= @base_url %>/v3/mail.yourcompany.com/messages \
+  --user 'api:KEY' \
+  -F from='ada@mail.yourcompany.com' \
+  -F to='a@example.com,b@example.com' \
+  -F subject='Your invoice' \
+  -F text='Hello %recipient.name%, your balance is %recipient.balance%.' \
+  -F 'recipient-variables={"a@example.com":{"name":"Ann","balance":"$40"},
+                           "b@example.com":{"name":"Bo","balance":"$12"}}'
+```
+
+One HTTP round trip instead of N. It still counts as N against your daily
+allowance — the limit is on messages, not requests, and there is no way around
+that by batching. An unknown placeholder is left visible rather than blanked,
+so `%recipient.nickname%` arriving in someone's inbox means you had a typo, not
+that the value was empty.
+
+## Warmup — what you can actually send today
+
+```bash
+curl <%= @base_url %>/v3/mail.yourcompany.com/limits --user 'api:KEY'
+```
+
+Answers with the rung, today's cap, how much is left, and what graduates it.
+The ladder in force right now:
+
+| Rung | Cap a day | Graduates |
+|---|---|---|
+<%= Enum.map_join(@ladder, "\n", fn r -> "| #{r.index} | #{r.cap} | #{r.rule} |" end) %>
+
+Two things about that table that catch people out.
+
+**"Days of sending" means days the domain actually sent on.** A domain that sat
+idle for a week has not warmed up for a week. You cannot wait out the first
+rung; you have to send through it.
+
+**Each rung's number is its own allowance, not a running total.** A domain
+leaves the second rung after that many messages *sent while on it*, then leaves
+the third after a further count of its own. Where that lands in absolute terms
+depends on how hard the domain sent early on, which is why `/limits` reports
+`sent_this_stage` and `remaining_this_stage` rather than making you work it out.
+
+When you go over, you get **429** with `retry_after_seconds` and the allowance
+resets at UTC midnight. Do not retry in a loop — the number is exact, and
+nothing changes until it elapses. Tell your user how many went out, how many
+did not, and when the rest can go.
+
+Plan a bulk job against `remaining_today` before you start, not after the first
+refusal.
+
+## Content screening
+
+Every message is screened. Outbound content that trips it is refused with
+**403 `content_rejected`** and a `categories` list, and is never sent.
+
+**That is a permanent answer. Do not retry it.** Do not rephrase and resend in
+a loop trying to find wording that passes — tell your user what was refused and
+which categories it hit, and let them decide. Inbound mail that trips screening
+is delivered but filed in `spam` rather than dropped.
+
+## Suppressions
+
+Three lists per domain: `bounces`, `unsubscribes`, `complaints`. They are
+enforced on every send, so you do not have to filter your own recipients — a
+suppressed address is silently dropped from the send and named in the
+`accepted` event. If every recipient is suppressed you get **400**.
+
+A hard bounce adds itself. You do not need to, and you should not remove one to
+"try again"; that address is dead and mailing it again costs your domain's
+reputation.
+
+```bash
+curl <%= @base_url %>/v3/mail.yourcompany.com/bounces --user 'api:KEY'
+curl -X POST <%= @base_url %>/v3/mail.yourcompany.com/unsubscribes --user 'api:KEY' -d address=a@example.com
+```
+
+## Finding out what happened
+
+A `200` on send means queued. To learn the outcome:
+
+```bash
+curl '<%= @base_url %>/v3/mail.yourcompany.com/events?event=delivered&limit=50' --user 'api:KEY'
+```
+
+Filters: `event`, `recipient`, `tag`, `begin`, `limit`. Event types are
+`accepted`, `delivered`, `failed`, `rejected`, `opened`, `clicked`,
+`complained`, `unsubscribed`, `stored`, `received`.
+
+If you are waiting on a specific message, poll every few seconds for a short
+while and then stop — most deliveries settle in seconds, and a message that has
+not landed in a minute is usually deferred rather than about to arrive. For
+anything long-running, register a webhook instead of polling:
+
+```bash
+curl -X POST <%= @base_url %>/v3/domains/mail.yourcompany.com/webhooks \
+  --user 'api:KEY' -d id=delivered -d url=https://yours.example.com/hook
+```
+
+The response carries a `signing_key`, once. Payloads are signed
+`HMAC-SHA256(timestamp + token, signing_key)` so your endpoint can tell a real
+callback from a forged one. Check it.
+
+## Commands
+
+Shorthands for what people actually ask for. **They are not routes** — there is
+no `GET /send`. They are phrasings a person might type at you, and this section
+says what to do for each.
+
+### /setup <domain>
+Get a domain to the point where it can send.
+`POST /v3/domains` → hand the required records to a human → poll
+`PUT /v3/domains/:domain/verify` until `state: "active"`.
+
+*Say plainly that this step needs someone with DNS access, and hand over the
+records formatted to paste. Do not poll verify more than once a minute. If it
+is still unverified after an hour, the records were probably typed wrong — fetch
+`GET /v3/domains/:domain` and compare what you asked for against what is live.*
+
+### /send <message> to <someone>
+One message. Test mode first, then for real.
+`POST /v3/:domain/messages` with `o:testmode=yes`, check the `200`, drop the
+flag, send.
+
+*Never invent the `from` address. It has to be on a domain the account owns and
+has verified; ask which one, or read `GET /v3/domains` and use an active one.*
+
+### /blast <message> to <list>
+A bulk send, which is mostly an exercise in not exceeding the cap.
+
+1. `GET /v3/:domain/limits` — read `remaining_today`.
+2. If the list is longer than that, say so **before** sending anything, and
+   agree what to do: send the first slice today, or wait for the domain to warm.
+3. One request with `recipient-variables`, not N requests.
+4. Report progress as you go.
+
+*Do not start a job you know cannot finish and discover the cap mid-way. The
+arithmetic is available before you send the first message, so do it then.*
+
+### /limits [domain]
+`GET /v3/:domain/limits`. Answer with the cap, what is left today, which rung,
+and what graduates it — not just the raw JSON.
+
+### /check <address>
+`GET /v4/address/validate?address=…`. Syntax plus a live MX lookup on the
+domain.
+
+*It does not probe the recipient's mailbox, so `is_valid: true` means the
+address is well-formed and its domain can receive mail, not that the person
+exists. Do not report it as if it were proof of a real mailbox.*
+
+### /inbox [domain]
+What has arrived. `GET /v3/:domain/messages?direction=inbound`, and
+`GET /v1/inbound/:domain/spam` for what screening filed away.
+
+*Receiving needs the `MX` record published, which is a separate step from
+sending. If the inbox is empty and no MX is verified, that is why.*
+
+### /whathappened <message>
+`GET /v3/:domain/events?recipient=…`, newest first. Translate the event chain
+rather than dumping it: accepted then delivered is a success, accepted then
+failed with a `permanent` severity is a bounce that has already suppressed the
+address, and accepted alone means it is still in flight.
+
+## Reporting on long runs
+
+Any bulk job here can run for minutes. Each time ten more messages have been
+**accepted**, say so before carrying on: how many are through, how many were
+refused, and what is left of today's allowance.
+
+    Sent 10, 0 refused — 40 left of today's 50.
+    Sent 20, 1 refused (suppressed) — 30 left.
+
+A run that prints nothing for four minutes is indistinguishable from one that
+has hung. The last line is a total, not another increment.
+
+## Endpoints
+
+Everything below needs a key.
+
+**Messages**
+- `POST /v3/:domain/messages` — send
+- `POST /v3/:domain/messages.mime` — send pre-built MIME
+- `GET /v3/:domain/messages` — list; `folder`, `direction`, `limit`
+- `GET /v3/domains/:domain/messages/:key` — one stored message, with bodies
+
+**Domains**
+- `GET /v3/domains`, `POST /v3/domains`
+- `GET|PUT|DELETE /v3/domains/:domain`
+- `PUT /v3/domains/:domain/verify`
+
+**Reporting**
+- `GET /v3/:domain/events`, `GET /v3/:domain/stats/total`
+- `GET /v3/:domain/tags`, `GET /v3/:domain/limits`
+
+**Suppressions** — for each of `bounces`, `unsubscribes`, `complaints`
+- `GET|POST /v3/:domain/<list>`
+- `GET|DELETE /v3/:domain/<list>/:address`
+
+**Templates**
+- `GET|POST /v3/:domain/templates`
+- `GET|DELETE /v3/:domain/templates/:name`
+- `POST /v3/:domain/templates/:name/versions`
+
+Substitution is `{{name}}` and nothing else. No expressions, no loops.
+
+**Inbound routing**
+- `GET|POST /v3/routes`, `GET|PUT|DELETE /v3/routes/:id`
+
+Expressions: `match_recipient("regex")`, `match_header("name", "regex")`,
+`catch_all()`. Actions: `forward("https://…")`, `store()`, `stop()`.
+
+**Webhooks**
+- `GET|POST /v3/domains/:domain/webhooks`
+- `GET|DELETE /v3/domains/:domain/webhooks/:id`
+
+**Address validation**
+- `GET /v4/address/validate?address=…`
+
+**Inbound delivery**
+- `POST /v1/inbound/:domain` — raw `message`, or parsed fields
+- `GET /v1/inbound/:domain/spam`
+
+**Account**
+- `POST /v1/accounts`, `POST /v1/accounts/login`
+- `GET|POST /v1/api-keys`, `DELETE /v1/api-keys/:id`
+- `GET /v1/profile`, `POST /v1/profile/refresh`, `GET /v1/profile/signals`
+
+## Errors
+
+| Status | Meaning | What to do |
+|---|---|---|
+| 400 | Missing or malformed parameter, or every recipient suppressed | Read `message`. Fix the request. Do not retry it unchanged. |
+| 401 | Missing or invalid key | Check the header. Do not retry with the same key. |
+| 403 `domain_not_verified` | The domain has no valid DNS yet | Publish the records, call verify. Retrying the send will not help. |
+| 403 `forbidden_sender` | `from` is not on this domain | Use an address at the domain in the path. |
+| 403 `content_rejected` | Screening refused the content | Permanent. Report the `categories`. Do not rephrase in a loop. |
+| 403 (scope) | The key lacks the scope | Permanent for this key. Use one with the scope. |
+| 404 | No such domain, template, route or message — or not yours | A domain someone else owns also answers 404. |
+| 429 | Over the daily warmup cap | Wait `retry_after_seconds`. Resets at UTC midnight. |
+| 5xx | The service failed | Retry with backoff. Nothing was sent. |
+
+The only statuses worth retrying are 429, after the stated wait, and 5xx. Every
+other failure here is an answer, not a hiccup.
+
+## Account profiles
+
+The service keeps a rolling ~<%= @profile_words %> word description of each
+account holder, rewritten as their mail moves. It is built from their mail
+activity and a contact-enrichment lookup on their own address.
+
+`GET /v1/profile` returns the calling account's own description, along with the
+enrichment record and activity digest it was written from.
+
+If you opened this account on someone's behalf, tell them this exists. It is
+their data and it is about them.
+
+## Rules
+
+- Send to people who asked to hear from the sender. This API will let you send
+  to anyone; whether you should is not a question it can answer for you.
+- Honour opt-outs. The unsubscribe list is enforced, but putting an unsubscribe
+  link in the message is your job, and in most jurisdictions it is the law.
+- Obey the marketing and anti-spam law that applies where you and your
+  recipients are. CAN-SPAM, GDPR, PECR and their equivalents apply to a message
+  sent by an agent exactly as they do to one typed by a person.
+- Do not use test mode to pretend a send happened. If a user asked for mail to
+  go out, tell them when it did not.
+- Do not remove a hard bounce to retry it, and do not work around the daily cap
+  by spreading a job across several domains. Both do the same thing: trade a
+  sending reputation that takes weeks to build for one day's throughput.
+- If a recipient asks to be removed, add them to the unsubscribe list and pass
+  the request on to your user. Doing that is part of using this properly, not
+  an optional courtesy.

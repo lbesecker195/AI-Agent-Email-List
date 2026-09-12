@@ -161,5 +161,9 @@ defmodule EmailProviderWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :show
+
+    # Agent-facing description of this API. Unauthenticated on purpose: an
+    # agent has to be able to read how to get a key before it has one.
+    get "/llms.txt", PageController, :llms
   end
 end
