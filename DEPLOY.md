@@ -16,6 +16,33 @@ first, which is what someone reviewing the service needs to see.
 
 Assumes the repo is at `/var/www/HoneyTrap/AI-Agent-Email-List`.
 
+## The short way
+
+```bash
+sudo bash deploy/deploy.sh --domain ai.agentemaillist.com --email you@example.com
+```
+
+That does everything below. It is safe to re-run and is the intended way to
+deploy a change: it keeps secrets it has already generated, skips work already
+done, and restarts only what it changed.
+
+Useful flags:
+
+| Flag | Does |
+| --- | --- |
+| `--no-ssl` | Skip certbot. Use when DNS is not pointed here yet. |
+| `--skip-build` | Re-apply config and restart without rebuilding. |
+| `--enable-mail` | Also turn on the SMTP listeners. Needs port 25 open. |
+| `--yes` | Never prompt. Fails instead of asking. |
+
+It will not turn sending on by itself, and it will not touch the CSuiteFinder
+deployment on the same machine. It adds swap if the box has too little memory to
+survive a build, because otherwise the kernel resolves that by killing the
+largest process, which here means CSuiteFinder.
+
+The rest of this file is the same work done by hand, which is what to read when
+a step fails or you want to know why it is there.
+
 ## 1. A user and a database
 
 The service does not run as root. CSuiteFinder runs as `csuite`; this one runs

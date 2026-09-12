@@ -52,7 +52,12 @@ sudo -u postgres psql -c "CREATE ROLE youruser LOGIN PASSWORD 'apassword' CREATE
 ```
 
 On a real deployment, run the release with `MIX_ENV=prod` and `DATABASE_URL`
-rather than `mix setup`, which is a development task.
+rather than `mix setup`, which is a development task. One command does the whole
+thing, and [DEPLOY.md](DEPLOY.md) explains every step it takes:
+
+```bash
+sudo bash deploy/deploy.sh --domain ai.agentemaillist.com --email you@example.com
+```
 
 ### On a machine that is running other things
 
