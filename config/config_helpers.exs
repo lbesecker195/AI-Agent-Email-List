@@ -31,8 +31,36 @@ defmodule EmailProvider.ConfigHelpers do
           password: System.get_env("PGPASSWORD") || "",
           hostname: System.get_env("PGHOST") || "localhost",
           port: port(),
-          database: System.get_env("PGDATABASE") || database
+          # Deliberately NOT read from PGDATABASE.
+          #
+          # Host, user and password are credentials and are safe to pick up
+          # from the environment. The database name is not a credential, it is
+          # which application's data this is. PGDATABASE is a standard libpq
+          # variable that may already be exported on a shared box for some
+          # other service, and honouring it here would point `mix ecto.migrate`
+          # at that service's database and create this app's tables inside it.
+          #
+          # To use a different database, name it in DATABASE_URL, which is an
+          # explicit choice rather than an ambient one.
+          database: database
         ]
+    end
+  end
+
+  @doc """
+  How many database connections to open.
+
+  Ecto's default of 10 is sized for a laptop where this is the only thing
+  running. On a shared box it is ten of somebody else's `max_connections`, and
+  a Postgres that runs out answers every client with "sorry, too many clients
+  already" — including the applications that were already there. Five is
+  plenty for development; `POOL_SIZE` raises it where the capacity exists.
+  """
+  def pool_size(default \\ 5) do
+    case System.get_env("POOL_SIZE") do
+      nil -> default
+      "" -> default
+      value -> String.to_integer(value)
     end
   end
 

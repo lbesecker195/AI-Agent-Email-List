@@ -16,7 +16,7 @@ config :email_provider,
        [
          stacktrace: true,
          show_sensitive_data_on_connection_error: true,
-         pool_size: 10
+         pool_size: EmailProvider.ConfigHelpers.pool_size()
        ] ++ EmailProvider.ConfigHelpers.repo_connection("email_provider_dev")
 
 # For development, we disable any cache and enable

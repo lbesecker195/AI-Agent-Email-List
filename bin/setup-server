@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+#
+# Set this application up on a machine that is running other things.
+#
+# `mix setup` is a development command. On a shared box it does three things
+# that can disturb its neighbours:
+#
+#   1. It compiles 35 dependencies and two C NIFs, fanning the Elixir compiler
+#      out to one process per scheduler and `make` to one job per core. On a
+#      small VPS that is the largest memory consumer on the machine, and when
+#      the kernel runs out it does not kill the build — the OOM killer picks
+#      the biggest process, which is usually somebody's running application.
+#
+#   2. It opens a database connection pool. Postgres has a fixed
+#      `max_connections`, and one that runs out answers *every* client with
+#      "sorry, too many clients already", including the services that were
+#      already connected.
+#
+#   3. It boots the whole application to run priv/repo/seeds.exs.
+#
+# This script does the same work with none of that. Compilation is serialised
+# and capped, the pool is small, and the application is never started.
+#
+# Usage:
+#   bin/setup-server
+#   MEMORY_MAX=1G bin/setup-server
+#
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+MEMORY_MAX="${MEMORY_MAX:-768M}"
+POOL_SIZE="${POOL_SIZE:-2}"
+export POOL_SIZE
+
+# One compiler process and one make job, rather than one per core.
+export ELIXIR_ERL_OPTIONS="${ELIXIR_ERL_OPTIONS:-+S 1:1}"
+export MAKEFLAGS="${MAKEFLAGS:--j1}"
+export MIX_ENV="${MIX_ENV:-dev}"
+
+if [ -z "${DATABASE_URL:-}" ] && [ -z "${PGUSER:-}" ]; then
+  echo "Set DATABASE_URL, or PGUSER and PGPASSWORD, before running this." >&2
+  echo "  DATABASE_URL=ecto://user:pass@localhost/email_provider_dev bin/setup-server" >&2
+  exit 1
+fi
+
+echo "==> building with at most ${MEMORY_MAX} of memory, one compiler process"
+echo "    MIX_ENV=${MIX_ENV}  POOL_SIZE=${POOL_SIZE}"
+
+run() {
+  # Under systemd, run the build inside a scope with a hard memory ceiling. If
+  # anything is going to be killed for using too much memory it is then this
+  # build, not a neighbouring service. Without systemd, fall back to running it
+  # directly — serialised compilation alone avoids most of the peak.
+  if command -v systemd-run >/dev/null 2>&1 && [ "$(id -u)" = "0" ]; then
+    systemd-run --quiet --scope --collect \
+      -p "MemoryMax=${MEMORY_MAX}" -p "MemorySwapMax=0" \
+      --setenv=ELIXIR_ERL_OPTIONS \
+      --setenv=MAKEFLAGS \
+      --setenv=MIX_ENV \
+      --setenv=POOL_SIZE \
+      "$@"
+  else
+    echo "    (no systemd-run as root; running without a memory ceiling)"
+    "$@"
+  fi
+}
+
+echo "==> fetching dependencies"
+run mix deps.get
+
+echo "==> compiling"
+run mix compile
+
+echo "==> creating and migrating the database"
+run mix setup.server
+
+echo
+echo "Done. Nothing else on this machine was started or connected to."
+echo "Run it with:  PORT=4005 mix phx.server"

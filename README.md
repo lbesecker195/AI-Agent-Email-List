@@ -42,6 +42,56 @@ sudo -u postgres psql -c "CREATE ROLE youruser LOGIN PASSWORD 'apassword' CREATE
 On a real deployment, run the release with `MIX_ENV=prod` and `DATABASE_URL`
 rather than `mix setup`, which is a development task.
 
+### On a machine that is running other things
+
+`mix setup` is a developer command and it is not a good neighbour. Use this
+instead:
+
+```bash
+DATABASE_URL=ecto://user:pass@localhost/email_provider_dev bin/setup-server
+```
+
+Three differences, each of which is a way `mix setup` can disturb something
+else on the box.
+
+**It caps the build.** Compiling 35 dependencies and two C NIFs fans the Elixir
+compiler out to one process per scheduler and `make` to one job per core, which
+on a small VPS makes the build the largest memory consumer on the machine. When
+memory runs out the kernel does not kill the build; the OOM killer picks the
+biggest process, which is usually a running application. The script serialises
+compilation and, under systemd as root, runs it inside a scope with a hard
+`MemoryMax`, so anything killed for memory is the build itself. Override with
+`MEMORY_MAX=1G`.
+
+**It opens two connections, not ten.** Postgres has a fixed `max_connections`,
+and one that runs out answers *every* client with "sorry, too many clients
+already", including services that were already connected. The dev pool now
+defaults to 5 and reads `POOL_SIZE`; the script sets it to 2.
+
+**It never starts the application.** `mix setup` boots the whole supervision
+tree to run `priv/repo/seeds.exs`, which opens a pool and starts the delivery
+queue. `mix setup.server` creates and migrates without booting anything.
+
+If something already went offline during a `mix setup`, these say which of the
+two it was:
+
+```bash
+sudo dmesg -T | grep -i -A2 'killed process'
+```
+
+```bash
+sudo grep -i "too many clients" /var/log/postgresql/*.log | tail
+```
+
+### A note on PGDATABASE
+
+Host, user and password are read from the environment. The database name is
+not. It is not a credential, it is which application's data this is, and
+`PGDATABASE` is a standard libpq variable that may already be exported on a
+shared box for some other service. Honouring it would point `mix ecto.migrate`
+at that service's database and create this application's tables inside it. To
+use a different database, name it in `DATABASE_URL`.
+
 ### Environment
 
 | Variable | Meaning | Default |

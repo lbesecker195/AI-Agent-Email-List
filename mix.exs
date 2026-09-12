@@ -70,6 +70,11 @@ defmodule EmailProvider.MixProject do
   defp aliases do
     [
       setup: ["deps.get", "ecto.setup"],
+      # For a box that is running other things. `setup` boots the whole
+      # application to execute seeds.exs, which opens a connection pool and
+      # starts the delivery queue; this does neither, and skips seeds, which is
+      # empty anyway. Pair it with bin/setup-server to cap the build's memory.
+      "setup.server": ["deps.get", "ecto.create --quiet", "ecto.migrate"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
