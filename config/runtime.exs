@@ -41,15 +41,31 @@ if config_env() != :test do
     model: System.get_env("MODERATION_MODEL", "omni-moderation-latest"),
     on_error: if(System.get_env("MODERATION_ON_ERROR") == "block", do: :block, else: :allow)
 
-  # -- Outbound relay --------------------------------------------------------
-  if System.get_env("SMTP_RELAY") do
-    config :email_provider, EmailProvider.Delivery.Sender,
-      adapter: :smtp,
-      relay: System.fetch_env!("SMTP_RELAY"),
-      port: String.to_integer(System.get_env("SMTP_PORT", "587")),
-      username: System.get_env("SMTP_USERNAME"),
-      password: System.get_env("SMTP_PASSWORD"),
-      tls: :always
+  # -- Outbound --------------------------------------------------------------
+  #
+  # Three ways out, in order of how much was configured. A smarthost if one is
+  # named, otherwise direct delivery to each recipient's MX if it is turned on,
+  # otherwise the local file writer, which is the safe default: nothing leaves
+  # the machine until somebody says it should.
+  cond do
+    System.get_env("SMTP_RELAY") ->
+      config :email_provider, EmailProvider.Delivery.Sender,
+        adapter: :smtp,
+        relay: System.fetch_env!("SMTP_RELAY"),
+        port: String.to_integer(System.get_env("SMTP_PORT", "587")),
+        username: System.get_env("SMTP_USERNAME"),
+        password: System.get_env("SMTP_PASSWORD"),
+        tls: :always
+
+    System.get_env("DIRECT_DELIVERY") == "true" ->
+      config :email_provider, EmailProvider.Delivery.Sender,
+        adapter: EmailProvider.Delivery.Sender.DirectMX,
+        helo_name: System.get_env("SMTP_HOSTNAME", "ai.agentemaillist.com"),
+        direct_port: String.to_integer(System.get_env("DIRECT_SMTP_PORT", "25")),
+        timeout: String.to_integer(System.get_env("DIRECT_SMTP_TIMEOUT_MS", "30000"))
+
+    true ->
+      :ok
   end
 
   # -- Account profiles ------------------------------------------------------
@@ -69,8 +85,30 @@ if config_env() != :test do
 
   # -- What customers publish in DNS ----------------------------------------
   config :email_provider, EmailProvider.Domains,
-    spf_host: System.get_env("SPF_HOST", "mail.example.com"),
-    mx_host: System.get_env("MX_HOST", "mx.example.com")
+    spf_host: System.get_env("SPF_HOST", "ai.agentemaillist.com"),
+    mx_host: System.get_env("MX_HOST", "ai.agentemaillist.com")
+
+  # -- Receiving and submission ----------------------------------------------
+  config :email_provider, EmailProvider.SMTP.Listener,
+    hostname: System.get_env("SMTP_HOSTNAME", "ai.agentemaillist.com"),
+    receiving: [
+      enabled: System.get_env("SMTP_RECEIVE_ENABLED", "false") == "true",
+      port: String.to_integer(System.get_env("SMTP_RECEIVE_PORT", "25")),
+      acceptors: String.to_integer(System.get_env("SMTP_ACCEPTORS", "10")),
+      max_connections: String.to_integer(System.get_env("SMTP_MAX_CONNECTIONS", "200"))
+    ],
+    submission: [
+      enabled: System.get_env("SMTP_SUBMISSION_ENABLED", "false") == "true",
+      port: String.to_integer(System.get_env("SMTP_SUBMISSION_PORT", "587")),
+      acceptors: String.to_integer(System.get_env("SMTP_ACCEPTORS", "5")),
+      max_connections: String.to_integer(System.get_env("SMTP_MAX_CONNECTIONS", "100"))
+    ]
+
+  config :email_provider, EmailProvider.Delivery.Queue,
+    enabled: System.get_env("DELIVERY_ENABLED", "true") == "true",
+    interval: String.to_integer(System.get_env("DELIVERY_INTERVAL_MS", "5000")),
+    batch_size: String.to_integer(System.get_env("DELIVERY_BATCH_SIZE", "200")),
+    max_concurrency: String.to_integer(System.get_env("DELIVERY_CONCURRENCY", "10"))
 end
 
 if config_env() == :prod do

@@ -42,7 +42,12 @@ config :phoenix,
 # waking up underneath a test, and a sender that writes to a temp directory.
 config :email_provider, EmailProvider.Moderation, enabled: false
 
-config :email_provider, EmailProvider.Delivery.Queue, enabled: false
+config :email_provider, EmailProvider.Delivery.Queue, enabled: false, max_concurrency: 1
+
+config :email_provider, EmailProvider.SMTP.Listener,
+  hostname: "mx.test.local",
+  receiving: [enabled: false],
+  submission: [enabled: false]
 
 config :email_provider, EmailProvider.Delivery.Sender,
   adapter: :local,

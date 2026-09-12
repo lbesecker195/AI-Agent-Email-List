@@ -107,9 +107,12 @@ config :email_provider, EmailProvider.Delivery.Queue,
   batch_size: 50
 
 # The hostnames customers are told to publish in SPF and MX.
+# One hostname for all three roles because ai.agentemaillist.com is the name
+# that resolves to the box today. Separate mail./mx. names are conventional and
+# only an A record away; change these and the DNS together, not one of them.
 config :email_provider, EmailProvider.Domains,
-  spf_host: "mail.example.com",
-  mx_host: "mx.example.com"
+  spf_host: "ai.agentemaillist.com",
+  mx_host: "ai.agentemaillist.com"
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

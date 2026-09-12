@@ -314,7 +314,84 @@ with it. `MODERATION_ON_ERROR=block` fails closed instead. "Unscreened" is a
 distinct state from "screened and clean" — it carries no check timestamp, so
 nothing downstream can mistake one for the other.
 
+## SMTP
+
+The service speaks SMTP in both directions. Neither listener is on by default:
+receiving needs port 25, and sending directly needs outbound port 25, and both
+are decisions rather than defaults.
+
+### Sending
+
+Three ways out, in order of precedence.
+
+| Setting | Route |
+| --- | --- |
+| `SMTP_RELAY` | Through a smarthost you chose. Demands STARTTLS and verifies the certificate. |
+| `DIRECT_DELIVERY=true` | Straight to each recipient's MX, no smarthost. |
+| neither | Written to `priv/local_mail`. Nothing leaves the machine. |
+
+Direct delivery groups recipients by domain, looks up each domain's MX records,
+and tries them in preference order, falling back to the domain's own A record
+when it publishes no MX as RFC 5321 requires. A 5xx from a destination ends the
+attempt; anything else moves to the next host, because it usually means that
+host is unreachable rather than the mail being unwanted.
+
+TLS is deliberately weaker here than to a smarthost: opportunistic and
+unverified. A smarthost is one server you chose and can hold to a standard. The
+open internet is full of receiving servers with self-signed or mismatched
+certificates and no prior agreement to check them against, so demanding
+verification would not make delivery safer, it would stop it working. This is
+what every other MTA does and what RFC 7435 calls opportunistic security.
+
+**Most hosts block outbound port 25, Vultr included.** Until that is lifted for
+the machine, every direct delivery times out. Ask support to unblock it, or use
+a smarthost.
+
+### Receiving
+
+`SMTP_RECEIVE_ENABLED=true` opens port 25 and accepts mail for hosted domains.
+`SMTP_SUBMISSION_ENABLED=true` opens 587, where a customer's own software
+authenticates with the credentials issued when their domain was added and then
+sends through us. Submission runs the same pipeline as the REST API, so
+screening, the suppression list and the warmup ladder all still apply.
+
+The property that matters is not being an open relay, and it lives in one
+function, `handle_RCPT/2`. On port 25 a recipient is accepted only if its domain
+is one we host and is active; everything else gets `550 5.7.1`. A hosted domain
+that is not verified yet gets `450` instead, so a legitimate sender retries once
+the customer finishes their DNS rather than being told permanently to go away.
+Relaying becomes permitted only once a session has authenticated, which is the
+entire purpose of the submission port and the reason it must never be port 25.
+`AUTH` is advertised only on the submission port, because offering it on 25
+turns every customer's SMTP password into something guessable from anywhere.
+
+Port 25 needs root or `CAP_NET_BIND_SERVICE`. A listener that cannot bind is
+logged and skipped rather than taken as a reason for the application not to
+start: a provider that cannot receive today should still serve its API and keep
+sending.
+
+### DNS this deployment needs
+
+`ai.agentemaillist.com` already resolves to the box. These do not exist yet and
+are what make domain verification and delivery work:
+
+| Type | Name | Value | For |
+| --- | --- | --- | --- |
+| TXT | `ai.agentemaillist.com` | `v=spf1 ip4:155.138.220.76 ~all` | so `include:ai.agentemaillist.com` in a customer's SPF authorises this machine |
+| PTR | `155.138.220.76` | `ai.agentemaillist.com` | set in the Vultr panel, not in DNS; receiving servers compare it against HELO |
+
+The root domain's existing MX points at Namecheap forwarding for ordinary mail
+to `@agentemaillist.com`. Everything here lives under `ai.` so that is left
+alone.
+
 ## How delivery works
+
+Delivery runs concurrently, bounded by `DELIVERY_CONCURRENCY`. It is almost
+entirely waiting on DNS, a TCP connect and a conversation with a server on the
+other side of the internet, so done one at a time the queue moves at the speed
+of its slowest recipient and one server taking thirty seconds stalls everything
+behind it. The ceiling stays under `POOL_SIZE` because each in-flight delivery
+holds a database connection.
 
 The queue is the messages table rather than a separate broker. That costs a
 poll every few seconds and buys one-owner semantics: a claim is an `UPDATE`

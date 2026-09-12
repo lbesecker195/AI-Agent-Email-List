@@ -18,7 +18,10 @@ defmodule EmailProvider.Delivery.Queue do
   alias EmailProvider.Mail.Message
 
   @default_interval 5_000
-  @default_batch 50
+  @default_batch 200
+  # Kept under the database pool: each in-flight delivery holds a connection.
+  @default_concurrency 10
+  @default_dispatch_timeout 60_000
   # A message claimed but not resolved within this long is assumed orphaned by
   # a crashed node and is retried.
   @stale_claim_minutes 15
@@ -64,11 +67,48 @@ defmodule EmailProvider.Delivery.Queue do
     requeue_stale()
 
     due()
-    |> Enum.map(&dispatch/1)
+    |> dispatch_all()
     |> Enum.frequencies_by(fn
       {:ok, _} -> :ok
       {:error, _} -> :error
     end)
+  end
+
+  # Delivery is almost entirely waiting: DNS, a TCP connect, then an SMTP
+  # conversation with a server on the other side of the internet. Done one at a
+  # time the whole queue moves at the speed of the slowest recipient, and a
+  # single server taking 30 seconds to answer stalls everything behind it.
+  #
+  # Concurrency is bounded rather than unbounded. Each in-flight delivery holds
+  # a database connection, so the ceiling has to stay under the pool or
+  # deliveries start queueing for a connection instead of a socket.
+  defp dispatch_all([]), do: []
+
+  defp dispatch_all(messages) do
+    case max_concurrency() do
+      n when n <= 1 ->
+        Enum.map(messages, &dispatch/1)
+
+      n ->
+        messages
+        |> Task.async_stream(&dispatch/1,
+          max_concurrency: n,
+          # Generous: this is a whole SMTP conversation, not a function call.
+          timeout: dispatch_timeout(),
+          on_timeout: :kill_task,
+          ordered: false
+        )
+        |> Enum.map(fn
+          {:ok, result} ->
+            result
+
+          # A killed task leaves its row claimed; the stale sweep returns it to
+          # the queue rather than it being lost.
+          {:exit, reason} ->
+            Logger.warning("delivery task exited: #{inspect(reason)}")
+            {:error, reason}
+        end)
+    end
   end
 
   defp due do
@@ -135,6 +175,9 @@ defmodule EmailProvider.Delivery.Queue do
     if count > 0, do: Logger.warning("requeued #{count} stale message(s)")
     count
   end
+
+  defp max_concurrency, do: config(:max_concurrency, @default_concurrency)
+  defp dispatch_timeout, do: config(:dispatch_timeout, @default_dispatch_timeout)
 
   defp config(key, default) do
     Application.get_env(:email_provider, __MODULE__, []) |> Keyword.get(key, default)
