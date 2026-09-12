@@ -19,7 +19,19 @@ machines this runs alongside. `PORT` overrides it.
 
 ### Database
 
-`DATABASE_URL` wins if it is set, which is the form that works everywhere:
+Set credentials once, in `.env` at the project root:
+
+```bash
+cp .env.example .env
+```
+
+Every mix command reads it, so nothing has to be retyped per command, and a
+real environment variable still overrides it: `DATABASE_URL=... mix test` does
+what it looks like. `.env` is gitignored; `.env.example` lists everything that
+can go in it.
+
+Without that file, `DATABASE_URL` wins if it is set, which is the form that
+works everywhere:
 
 ```bash
 DATABASE_URL=ecto://user:pass@localhost/email_provider_dev mix setup

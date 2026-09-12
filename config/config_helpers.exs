@@ -8,6 +8,73 @@ defmodule EmailProvider.ConfigHelpers do
   """
 
   @doc """
+  Load `.env` from the project root into the environment, if it is there.
+
+  Without this, every credential has to be retyped on every mix command, and
+  the one you forget does not announce itself: it falls through to a guess and
+  surfaces later as a connection error that names the guess rather than the
+  omission. One file, set once, read by every command.
+
+  A real environment variable always wins over the file, so `DATABASE_URL=... mix
+  test` still does what it looks like it does. Never raises: a missing or
+  unreadable file just means there is nothing to add.
+
+  Format is the usual one. Blank lines and `#` comments are skipped, `export`
+  prefixes are tolerated, and a value may be wrapped in single or double quotes.
+  """
+  def load_dotenv!(path \\ nil) do
+    path = path || Path.join(File.cwd!(), ".env")
+
+    case File.read(path) do
+      {:ok, contents} -> contents |> parse_dotenv() |> put_unless_set()
+      {:error, _reason} -> :ok
+    end
+  end
+
+  @doc false
+  def parse_dotenv(contents) do
+    contents
+    |> String.split(["\n", "\r\n"])
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == "" or String.starts_with?(&1, "#")))
+    |> Enum.flat_map(fn line ->
+      line = String.replace_prefix(line, "export ", "")
+
+      case String.split(line, "=", parts: 2) do
+        [key, value] ->
+          key = String.trim(key)
+          if key == "", do: [], else: [{key, unquote_value(String.trim(value))}]
+
+        _ ->
+          []
+      end
+    end)
+  end
+
+  defp unquote_value(<<?", _::binary>> = value) do
+    case String.length(value) > 1 and String.ends_with?(value, "\"") do
+      true -> value |> String.slice(1..-2//1)
+      false -> value
+    end
+  end
+
+  defp unquote_value(<<?', _::binary>> = value) do
+    case String.length(value) > 1 and String.ends_with?(value, "'") do
+      true -> value |> String.slice(1..-2//1)
+      false -> value
+    end
+  end
+
+  defp unquote_value(value), do: value
+
+  defp put_unless_set(pairs) do
+    Enum.each(pairs, fn {key, value} ->
+      # The real environment wins. A file is a default, not an override.
+      if is_nil(System.get_env(key)), do: System.put_env(key, value)
+    end)
+  end
+
+  @doc """
   Work out how to reach Postgres, in order of how much the operator told us.
 
   `DATABASE_URL` wins, because it is the one form that works on every machine

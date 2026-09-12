@@ -1,5 +1,10 @@
 import Config
 
+# Also here, not just config.exs: in a release config.exs was evaluated when
+# the release was built, and this file is the one that runs on the machine.
+Code.require_file("config_helpers.exs", __DIR__)
+EmailProvider.ConfigHelpers.load_dotenv!()
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration

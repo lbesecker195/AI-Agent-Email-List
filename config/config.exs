@@ -7,6 +7,12 @@
 # General application configuration
 import Config
 
+# Credentials and other settings for this machine, if there is a .env here.
+# Loaded first so every config file below sees them. A real environment
+# variable always wins over the file. See config/config_helpers.exs.
+Code.require_file("config_helpers.exs", __DIR__)
+EmailProvider.ConfigHelpers.load_dotenv!()
+
 config :email_provider,
   ecto_repos: [EmailProvider.Repo],
   generators: [timestamp_type: :utc_datetime, binary_id: true]

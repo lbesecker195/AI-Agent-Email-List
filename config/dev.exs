@@ -1,7 +1,5 @@
 import Config
 
-Code.require_file("config_helpers.exs", __DIR__)
-
 # Configure your database.
 #
 # `DATABASE_URL` wins if it is set, which is the one setting that works

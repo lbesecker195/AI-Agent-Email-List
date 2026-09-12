@@ -1,7 +1,5 @@
 import Config
 
-Code.require_file("config_helpers.exs", __DIR__)
-
 # Configure your database
 #
 # The MIX_TEST_PARTITION environment variable can be used

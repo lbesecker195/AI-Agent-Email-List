@@ -30,6 +30,66 @@ defmodule EmailProvider.ConfigHelpersTest do
     end
   end
 
+  describe "the .env file" do
+    test "parses the usual shapes" do
+      parsed =
+        ConfigHelpers.parse_dotenv("""
+        # a comment
+        PLAIN=value
+
+        QUOTED="with spaces"
+        SINGLE='also quoted'
+        export EXPORTED=yes
+        URL=ecto://u:p@host/db?x=1
+        EMPTY=
+          INDENTED=trimmed
+        not a pair
+        """)
+
+      assert parsed[:PLAIN] == nil
+      map = Map.new(parsed)
+
+      assert map["PLAIN"] == "value"
+      assert map["QUOTED"] == "with spaces"
+      assert map["SINGLE"] == "also quoted"
+      assert map["EXPORTED"] == "yes"
+      # An = inside a value is part of the value, not another separator.
+      assert map["URL"] == "ecto://u:p@host/db?x=1"
+      assert map["EMPTY"] == ""
+      assert map["INDENTED"] == "trimmed"
+      refute Map.has_key?(map, "not a pair")
+      refute Map.has_key?(map, "# a comment")
+    end
+
+    test "sets what is missing" do
+      path = Path.join(System.tmp_dir!(), "env_#{System.unique_integer([:positive])}")
+      File.write!(path, "EP_TEST_FRESH=from_file\n")
+      on_exit(fn -> File.rm(path) end)
+
+      with_env(%{"EP_TEST_FRESH" => nil}, fn ->
+        ConfigHelpers.load_dotenv!(path)
+        assert System.get_env("EP_TEST_FRESH") == "from_file"
+        System.delete_env("EP_TEST_FRESH")
+      end)
+    end
+
+    test "never overrides a real environment variable" do
+      path = Path.join(System.tmp_dir!(), "env_#{System.unique_integer([:positive])}")
+      File.write!(path, "EP_TEST_SET=from_file\n")
+      on_exit(fn -> File.rm(path) end)
+
+      # `DATABASE_URL=... mix test` has to keep meaning what it looks like.
+      with_env(%{"EP_TEST_SET" => "from_environment"}, fn ->
+        ConfigHelpers.load_dotenv!(path)
+        assert System.get_env("EP_TEST_SET") == "from_environment"
+      end)
+    end
+
+    test "a missing file is not an error" do
+      assert ConfigHelpers.load_dotenv!("/nonexistent/.env") == :ok
+    end
+  end
+
   describe "DATABASE_URL" do
     test "wins over everything else" do
       with_env(%{"DATABASE_URL" => "ecto://u:p@db.example/other", "PGUSER" => "ignored"}, fn ->
