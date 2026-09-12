@@ -1,19 +1,21 @@
 import Config
 
+Code.require_file("config_helpers.exs", __DIR__)
+
 # Configure your database
 #
 # The MIX_TEST_PARTITION environment variable can be used
 # to provide built-in test partitioning in CI environment.
 # Run `mix help test` for more information.
-config :email_provider, EmailProvider.Repo,
-  # Defaults suit a stock Homebrew Postgres (a role named after the OS user,
-  # trust auth). Override with the standard PG* variables in CI.
-  username: System.get_env("PGUSER") || System.get_env("USER") || "postgres",
-  password: System.get_env("PGPASSWORD") || "",
-  hostname: System.get_env("PGHOST") || "localhost",
-  database: "email_provider_test#{System.get_env("MIX_TEST_PARTITION")}",
-  pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: System.schedulers_online() * 2
+config :email_provider,
+       EmailProvider.Repo,
+       [
+         pool: Ecto.Adapters.SQL.Sandbox,
+         pool_size: System.schedulers_online() * 2
+       ] ++
+         EmailProvider.ConfigHelpers.repo_connection(
+           "email_provider_test#{System.get_env("MIX_TEST_PARTITION")}"
+         )
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.

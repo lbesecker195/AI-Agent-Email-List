@@ -1,16 +1,23 @@
 import Config
 
-# Configure your database
-config :email_provider, EmailProvider.Repo,
-  # Defaults suit a stock Homebrew Postgres (a role named after the OS user,
-  # trust auth). Override with the standard PG* variables in CI.
-  username: System.get_env("PGUSER") || System.get_env("USER") || "postgres",
-  password: System.get_env("PGPASSWORD") || "",
-  hostname: System.get_env("PGHOST") || "localhost",
-  database: "email_provider_dev",
-  stacktrace: true,
-  show_sensitive_data_on_connection_error: true,
-  pool_size: 10
+Code.require_file("config_helpers.exs", __DIR__)
+
+# Configure your database.
+#
+# `DATABASE_URL` wins if it is set, which is the one setting that works
+# everywhere. Otherwise the standard PG* variables, and only then a guess.
+#
+# The guess deliberately does not use the OS user when that user is root: on a
+# server you are often root, there is rarely a Postgres role called root, and
+# the resulting "password authentication failed for user root" says nothing
+# about what actually went wrong.
+config :email_provider,
+       EmailProvider.Repo,
+       [
+         stacktrace: true,
+         show_sensitive_data_on_connection_error: true,
+         pool_size: 10
+       ] ++ EmailProvider.ConfigHelpers.repo_connection("email_provider_dev")
 
 # For development, we disable any cache and enable
 # debugging and code reloading.
