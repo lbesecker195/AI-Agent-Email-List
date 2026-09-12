@@ -10,13 +10,37 @@ API only — no HTML, no assets.
 
 ```bash
 mix setup            # deps, database, migrations
-mix phx.server       # http://localhost:4000
+mix phx.server       # http://localhost:4005
 mix test
 ```
 
-The database configuration reads the standard `PGUSER` / `PGPASSWORD` /
-`PGHOST` variables and falls back to a role named after the OS user, which is
-what a stock Homebrew Postgres gives you.
+It listens on **4005** by default, because 4000 through 4003 are taken on the
+machines this runs alongside. `PORT` overrides it.
+
+### Database
+
+`DATABASE_URL` wins if it is set, which is the form that works everywhere:
+
+```bash
+DATABASE_URL=ecto://user:pass@localhost/email_provider_dev mix setup
+```
+
+Otherwise the standard `PGUSER`, `PGPASSWORD`, `PGHOST`, `PGPORT` and
+`PGDATABASE` variables, and only then a guess at a role named after the OS
+user, which is what a stock Homebrew Postgres gives you.
+
+The guess skips the OS user when that user is `root`. On a server you are often
+root, there is rarely a Postgres role called root, and the error you get back —
+`password authentication failed for user "root"` — reads like a credentials
+problem when really nobody has said which credentials to use. If you hit that
+on a fresh box, either set `DATABASE_URL` or create the role:
+
+```bash
+sudo -u postgres psql -c "CREATE ROLE youruser LOGIN PASSWORD 'apassword' CREATEDB;"
+```
+
+On a real deployment, run the release with `MIX_ENV=prod` and `DATABASE_URL`
+rather than `mix setup`, which is a development task.
 
 ### Environment
 
@@ -36,7 +60,7 @@ message to disk and logs it. That is the default on purpose.
 ## Accounts and keys
 
 ```bash
-curl -s localhost:4000/v1/accounts \
+curl -s localhost:4005/v1/accounts \
   -d email=you@example.com -d password='a sufficiently long password'
 ```
 
@@ -44,8 +68,8 @@ The response carries an API key. It is shown once — only a SHA-256 hash is
 stored, so a lost key is rotated rather than looked up. Authenticate either way:
 
 ```bash
-curl -s --user 'api:ep_live_...' localhost:4000/v3/domains     # Mailgun style
-curl -s -H 'Authorization: Bearer ep_live_...' localhost:4000/v3/domains
+curl -s --user 'api:ep_live_...' localhost:4005/v3/domains     # Mailgun style
+curl -s -H 'Authorization: Bearer ep_live_...' localhost:4005/v3/domains
 ```
 
 Keys carry scopes (`messages:send`, `events:read`, `domains:write`, …). Scopes
@@ -57,13 +81,13 @@ Adding a domain generates an RSA-2048 DKIM keypair. The private half stays in
 the database; the public half is what the customer publishes.
 
 ```bash
-curl -s --user 'api:KEY' localhost:4000/v3/domains -d name=mail.yourcompany.com
+curl -s --user 'api:KEY' localhost:4005/v3/domains -d name=mail.yourcompany.com
 ```
 
 The response lists the records to publish, then:
 
 ```bash
-curl -s -X PUT --user 'api:KEY' localhost:4000/v3/domains/mail.yourcompany.com/verify
+curl -s -X PUT --user 'api:KEY' localhost:4005/v3/domains/mail.yourcompany.com/verify
 ```
 
 A domain is `unverified` until SPF and DKIM are both observed in DNS, and it
@@ -78,7 +102,7 @@ signature.
 ## Sending
 
 ```bash
-curl -s --user 'api:KEY' localhost:4000/v3/mail.yourcompany.com/messages \
+curl -s --user 'api:KEY' localhost:4005/v3/mail.yourcompany.com/messages \
   -F from='Ada <ada@mail.yourcompany.com>' \
   -F to=someone@elsewhere.com \
   -F subject='Hello' \
@@ -155,6 +179,15 @@ callbacks. The key is returned once, at creation.
 not probe the recipient's server with a partial SMTP conversation: that is what
 makes validation accurate, and it is also indistinguishable from the
 reconnaissance step of a directory harvest.
+
+### For agents
+`GET /llms.txt` — an agent-facing description of this API, needing no key. It
+is rendered from the running service, so the sending ladder in it is the ladder
+actually enforced rather than a number written down once and left to drift. A
+test asserts both that the published rungs match `EmailProvider.Warmup.stages/0`
+and that every endpoint the file advertises is really routed.
+
+`/robots.txt` points at it.
 
 ### Inbound
 `POST /v1/inbound/:domain` — where the MTA hands us received mail, as raw
@@ -277,9 +310,9 @@ each time a message moves in either direction. Two inputs feed it:
   domains, tags, and a hard-capped excerpt of recent bodies.
 
 ```bash
-curl -s --user 'api:KEY' localhost:4000/v1/profile
-curl -s --user 'api:KEY' -X POST localhost:4000/v1/profile/refresh
-curl -s --user 'api:KEY' localhost:4000/v1/profile/signals
+curl -s --user 'api:KEY' localhost:4005/v1/profile
+curl -s --user 'api:KEY' -X POST localhost:4005/v1/profile/refresh
+curl -s --user 'api:KEY' localhost:4005/v1/profile/signals
 ```
 
 The stored row keeps the description *and* the enrichment record and activity

@@ -20,8 +20,10 @@ if System.get_env("PHX_SERVER") do
   config :email_provider, EmailProviderWeb.Endpoint, server: true
 end
 
+# Port 4000 is taken on the machines this runs on (and 4001-4003 are spoken
+# for by other services), so the default is 4005. `PORT` overrides it.
 config :email_provider, EmailProviderWeb.Endpoint,
-  http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+  http: [port: String.to_integer(System.get_env("PORT", "4005"))]
 
 # Runtime configuration from the environment. Skipped under test, which pins
 # these in config/test.exs — a stray environment variable on a developer's
