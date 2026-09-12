@@ -17,6 +17,9 @@ defmodule EmailProvider.Application do
       {Task.Supervisor, name: EmailProvider.TaskSupervisor},
       # Polls the messages table and dispatches what is due.
       EmailProvider.Delivery.Queue,
+      # Receives mail. Listeners that cannot bind are logged and skipped, so a
+      # machine without permission for port 25 still serves the API and sends.
+      EmailProvider.SMTP.Listener,
       # Start to serve requests, typically the last entry
       EmailProviderWeb.Endpoint
     ]

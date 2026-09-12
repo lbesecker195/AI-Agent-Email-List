@@ -271,6 +271,40 @@ defmodule EmailProvider.Domains do
       []
   end
 
+  @doc """
+  Find a domain by its SMTP submission login.
+
+  Logins are issued as `postmaster@<domain>`, so this is a lookup rather than
+  a search.
+  """
+  def get_domain_by_smtp_login(login) when is_binary(login) do
+    normalized = login |> String.trim() |> String.downcase()
+    Repo.one(from d in Domain, where: fragment("lower(?)", d.smtp_login) == ^normalized)
+  end
+
+  def get_domain_by_smtp_login(_), do: nil
+
+  @doc """
+  Check a submitted SMTP password against the stored hash.
+
+  A domain with no password set still pays the cost of a hash comparison, so
+  the time taken does not say whether the login exists.
+  """
+  def valid_smtp_password?(%Domain{smtp_password_hash: nil}, _password) do
+    Bcrypt.no_user_verify()
+    false
+  end
+
+  def valid_smtp_password?(%Domain{smtp_password_hash: hash}, password)
+      when is_binary(password) do
+    Bcrypt.verify_pass(password, hash)
+  end
+
+  def valid_smtp_password?(_domain, _password) do
+    Bcrypt.no_user_verify()
+    false
+  end
+
   @doc "True when this domain is allowed to send right now."
   def sendable?(%Domain{state: "active"}), do: true
   def sendable?(%Domain{}), do: false
