@@ -221,15 +221,16 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
-  # Redirecting plaintext to HTTPS is right once TLS exists and a trap before
-  # then: nginx on port 80 sets X-Forwarded-Proto: http, the app redirects to a
-  # scheme nothing is listening on, and the result looks like a broken
-  # application rather than a missing certificate. So this is opt-in. Turn it on
-  # after certbot has issued, not before.
-  if System.get_env("FORCE_SSL") == "true" do
-    config :email_provider, EmailProviderWeb.Endpoint,
-      force_ssl: [rewrite_on: [:x_forwarded_proto], hsts: true]
-  end
+  # `:force_ssl` is deliberately NOT set here. Phoenix reads it with
+  # Application.compile_env/2, so a release checks the runtime value against the
+  # one baked in at build time and refuses to boot when they differ. Setting it
+  # from an environment variable cannot work, it just crash-loops.
+  #
+  # It is already configured in config/prod.exs, which is the compile-time file
+  # and where Phoenix's own generated comment says it belongs. That config
+  # excludes localhost and 127.0.0.1, so health checks over loopback still
+  # answer, and certbot's challenge is served by nginx directly rather than
+  # proxied, so issuing a certificate works before TLS exists.
 
   # ## SSL Support
   #

@@ -92,9 +92,9 @@ mix phx.gen.secret        # paste into SECRET_KEY_BASE
 
 `DATABASE_URL` with the password from step 1, and `PHX_HOST=ai.agentemaillist.com`.
 
-Leave `FORCE_SSL` commented out for now. Turning it on before certbot has issued
-means every request redirects to a scheme nothing is listening on, which looks
-exactly like a broken application.
+There is no `FORCE_SSL` setting to worry about. HTTPS enforcement and HSTS are
+compile-time configuration in `config/prod.exs`, always on, and they exclude
+loopback so the health checks below still answer over plain HTTP.
 
 ## 3. Build the release
 
@@ -184,14 +184,7 @@ sudo certbot --nginx -d ai.agentemaillist.com
 ```
 
 Certbot rewrites the site file in place, adding the TLS block and a redirect
-from port 80. Once it has issued, turn on the app's own enforcement:
-
-```bash
-sudo sed -i 's/^# FORCE_SSL=true/FORCE_SSL=true/' /etc/email-provider.env
-sudo systemctl restart email-provider
-```
-
-Then check the whole path:
+from port 80. Nothing needs switching on afterwards. Check the whole path:
 
 ```bash
 curl -s https://ai.agentemaillist.com/health
@@ -305,8 +298,18 @@ one line above: whoever is running the command cannot read
 sudo chown root:mailer /etc/email-provider.env && sudo chmod 640 /etc/email-provider.env
 ```
 
-**Redirect loop, or every request 301s.** `FORCE_SSL=true` with no TLS yet, or
-nginx not sending `X-Forwarded-Proto`. Both look identical from a browser.
+**502 Bad Gateway, and `journalctl` shows `a different value set for path
+[:force_ssl] ... during runtime compared to compile time`.** Something is setting
+`FORCE_SSL` in `/etc/email-provider.env`. Phoenix reads `:force_ssl` at compile
+time, so a release aborts at boot when the runtime value disagrees, and systemd
+restarts it forever. Delete the line and restart:
+
+```bash
+sudo sed -i '/^FORCE_SSL=/d' /etc/email-provider.env && sudo systemctl restart email-provider
+```
+
+**Redirect loop, or every request 301s.** nginx is not sending
+`X-Forwarded-Proto`. The app then believes every request arrived in plaintext.
 
 **`password authentication failed`.** The role in `DATABASE_URL` does not exist
 or its password is wrong. Note that `PGDATABASE` is deliberately ignored, so the
