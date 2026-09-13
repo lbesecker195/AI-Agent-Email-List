@@ -101,7 +101,10 @@ fi
 
 step "System packages"
 missing=()
-for pkg in build-essential git postgresql nginx curl; do
+# openssl generates SECRET_KEY_BASE and the database password; ca-certificates
+# lets curl reach the address-lookup service over HTTPS; iproute2 provides `ss`.
+# None are guaranteed on a minimal image.
+for pkg in build-essential git postgresql nginx curl openssl ca-certificates iproute2; do
   dpkg -s "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
 done
 if [[ ${#missing[@]} -gt 0 ]]; then
@@ -114,6 +117,17 @@ fi
 
 command -v mix >/dev/null || die "Elixir is not installed. Install Erlang/Elixir, then re-run."
 ok "elixir $(elixir --version | awk '/^Elixir/{print $2}')"
+
+# Root having mix says nothing about the app user having it, and the build runs
+# as the app user. A version manager installed under /root puts Elixir somewhere
+# this user cannot reach, and sudo resets PATH to secure_path besides. Better to
+# say so here than to fail several minutes into a build.
+if ! sudo -u "$APP_USER" env HOME="$APP_DIR" bash -lc 'command -v mix' >/dev/null 2>&1; then
+  die "$APP_USER cannot run mix. Elixir is probably installed under /root or via
+    a version manager that user cannot see. Install it system-wide, for instance
+    to /usr/local/bin, so both users reach the same one."
+fi
+ok "$APP_USER can run mix too"
 
 # ----------------------------------------------------------------- memory
 
@@ -233,10 +247,6 @@ PORT=$PORT
 BIND_IP=127.0.0.1
 POOL_SIZE=$POOL_SIZE
 
-# Set by this script once TLS is in place. Before then it would redirect every
-# request to a scheme nothing is listening on.
-FORCE_SSL=${FORCE_SSL:-false}
-
 SMTP_HOSTNAME=${SMTP_HOSTNAME:-$DOMAIN}
 SPF_HOST=${SPF_HOST:-$DOMAIN}
 MX_HOST=${MX_HOST:-$DOMAIN}
@@ -257,6 +267,10 @@ ENVEOF
 # has to read this file itself. Letting that user read it grants nothing it does
 # not already have, since every one of these values ends up in its own process
 # environment a moment later. Nobody else on the machine can read it.
+# An earlier version of this script wrote FORCE_SSL here and it made the release
+# refuse to boot. Remove it rather than leaving a line that looks meaningful.
+sed -i '/^FORCE_SSL=/d' "$ENV_FILE"
+
 chown "root:$APP_USER" "$ENV_FILE"
 chmod 640 "$ENV_FILE"
 umask 022
@@ -276,8 +290,11 @@ if [[ $DO_BUILD -eq 1 ]]; then
   #
   # ELIXIR_ERL_OPTIONS and MAKEFLAGS keep compilation to one process. On a small
   # box the parallel default is what makes the build the biggest thing running.
+  # `-lc`, matching the preflight check: a login shell sources /etc/profile,
+  # which is where a system-wide Elixir install usually puts itself on PATH. A
+  # check that used a different shell from the build would prove nothing.
   sudo -u "$APP_USER" env HOME="$APP_DIR" MIX_ENV=prod \
-    ELIXIR_ERL_OPTIONS="+S 1:1" MAKEFLAGS=-j1 bash -c "
+    ELIXIR_ERL_OPTIONS="+S 1:1" MAKEFLAGS=-j1 bash -lc "
     set -e
     cd '$APP_DIR'
     mix local.hex --force --if-missing >/dev/null 2>&1 || mix local.hex --force >/dev/null
@@ -388,13 +405,9 @@ if [[ $DO_SSL -eq 1 ]]; then
     ok "certificate issued"
   fi
 
-  # Only now is this safe. Set earlier it would redirect to a scheme nothing is
-  # listening on, which looks exactly like a broken application.
-  if grep -q '^FORCE_SSL=false' "$ENV_FILE"; then
-    sed -i 's/^FORCE_SSL=false/FORCE_SSL=true/' "$ENV_FILE"
-    systemctl restart "$SERVICE"
-    ok "FORCE_SSL enabled and service restarted"
-  fi
+  # Nothing to switch on: HTTPS enforcement is compile-time config in
+  # config/prod.exs and has been active since the first boot. It excludes
+  # loopback, which is why the health check above still answered over plain HTTP.
 
   step "Verifying over HTTPS"
   if curl -sf --max-time 10 "https://$DOMAIN/health" >/dev/null; then
