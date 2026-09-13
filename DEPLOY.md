@@ -72,10 +72,17 @@ is world-readable.
 
 ```bash
 sudo cp deploy/email-provider.env.example /etc/email-provider.env
-sudo chown root:root /etc/email-provider.env
-sudo chmod 600 /etc/email-provider.env
+sudo chown root:mailer /etc/email-provider.env
+sudo chmod 640 /etc/email-provider.env
 sudo nano /etc/email-provider.env
 ```
+
+`root:mailer` and `640`, not `root:root` and `600`. systemd reads
+`EnvironmentFile` as root before dropping privileges so the service works either
+way, but the migration below runs as `mailer` and has to read the file itself.
+Letting that user read it grants nothing it does not already have, because every
+value in it ends up in its own process environment a moment later. Nothing else
+on the machine can read it.
 
 Three values have to be set or the release refuses to boot:
 
@@ -107,17 +114,22 @@ no database, so it does not matter that migrations have not run yet.
 
 ## 4. Migrate
 
-Run it through `systemd-run` so it reads the same `EnvironmentFile` the service
-does. Expanding the file into a command line instead would put
-`SECRET_KEY_BASE` and the database password in the process list and your shell
-history.
-
 ```bash
-sudo systemd-run --pty --collect --uid=mailer \
-  --working-directory=/var/www/HoneyTrap/AI-Agent-Email-List \
-  --property=EnvironmentFile=/etc/email-provider.env \
-  _build/prod/rel/email_provider/bin/migrate
+sudo -u mailer env HOME=/var/www/HoneyTrap/AI-Agent-Email-List bash -c '
+  set -e
+  set -a; . /etc/email-provider.env; set +a
+  exec _build/prod/rel/email_provider/bin/migrate
+'
 ```
+
+The file is sourced inside the shell rather than expanded onto the command line,
+which would put `SECRET_KEY_BASE` and the database password into `ps` and your
+shell history, and would split that secret on the `/` and `=` that base64
+produces.
+
+`set -e` matters. Without it, a file this user cannot read fails quietly and
+`migrate` runs anyway, which surfaces as `environment variable DATABASE_URL is
+missing` and sends you looking at the wrong file.
 
 ## 5. systemd
 
@@ -266,21 +278,20 @@ sudo -u mailer _build/prod/rel/email_provider/bin/email_provider remote
 Deploying a change:
 
 ```bash
-cd /var/www/HoneyTrap/AI-Agent-Email-List
-sudo -u mailer git pull
-sudo -u mailer bin/setup-server --release
-sudo systemd-run --pty --collect --uid=mailer \
-  --working-directory=/var/www/HoneyTrap/AI-Agent-Email-List \
-  --property=EnvironmentFile=/etc/email-provider.env \
-  _build/prod/rel/email_provider/bin/migrate
-sudo systemctl restart email-provider
+sudo bash deploy/deploy.sh --domain ai.agentemaillist.com
 ```
 
 ## If it will not start
 
-**`SECRET_KEY_BASE is missing`** or **`DATABASE_URL is missing`.** The release
-refuses to boot without them by design. Check `/etc/email-provider.env` is
-readable by root and that the unit's `EnvironmentFile` path matches.
+**`DATABASE_URL is missing`, usually just after `Permission denied` on the env
+file.** The release refuses to boot without it by design, but the real cause is
+one line above: whoever is running the command cannot read
+`/etc/email-provider.env`. It has to be `root:mailer` and `640`, not
+`root:root` and `600`.
+
+```bash
+sudo chown root:mailer /etc/email-provider.env && sudo chmod 640 /etc/email-provider.env
+```
 
 **Redirect loop, or every request 301s.** `FORCE_SSL=true` with no TLS yet, or
 nginx not sending `X-Forwarded-Proto`. Both look identical from a browser.

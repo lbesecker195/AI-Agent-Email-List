@@ -239,10 +239,20 @@ $DIRECT_LINE
 OPENAI_API_KEY=${OPENAI_API_KEY:-}
 CSUITEFINDER_API_KEY=${CSUITEFINDER_API_KEY:-}
 ENVEOF
-chown root:root "$ENV_FILE"
-chmod 600 "$ENV_FILE"
+# root:$APP_USER 640, not root:root 600.
+#
+# systemd reads EnvironmentFile as root before dropping privileges, so the
+# service works either way. The migration does not: it runs as the app user and
+# has to read this file itself. Letting that user read it grants nothing it does
+# not already have, since every one of these values ends up in its own process
+# environment a moment later. Nobody else on the machine can read it.
+chown "root:$APP_USER" "$ENV_FILE"
+chmod 640 "$ENV_FILE"
 umask 022
-ok "$ENV_FILE written (root only)"
+ok "$ENV_FILE written (root, readable by $APP_USER)"
+
+sudo -u "$APP_USER" test -r "$ENV_FILE" ||
+  die "$APP_USER cannot read $ENV_FILE; migrations would run without credentials"
 
 # ------------------------------------------------------------------- build
 
@@ -275,12 +285,21 @@ fi
 
 step "Migrations"
 # Source the env file inside the child shell. Passing it through `xargs` would
-# split SECRET_KEY_BASE on the / and = that base64 produces.
+# split SECRET_KEY_BASE on the / and = that base64 produces, and putting it on
+# the command line would show the database password in `ps`.
+#
+# `set -e` in the inner shell matters: without it a file this user cannot read
+# fails quietly and migrate runs anyway, which surfaces as "DATABASE_URL is
+# missing" and sends you looking in the wrong place.
 sudo -u "$APP_USER" env HOME="$APP_DIR" bash -c '
+  set -e
   set -a; . "$1"; set +a
   exec "$2"
 ' _ "$ENV_FILE" "$APP_DIR/_build/prod/rel/$APP_NAME/bin/migrate"
 ok "database migrated"
+
+# A failed boot leaves one of these behind, and it is confusing to find later.
+rm -f "$APP_DIR/erl_crash.dump"
 
 # ----------------------------------------------------------------- systemd
 
