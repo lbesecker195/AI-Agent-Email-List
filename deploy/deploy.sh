@@ -80,6 +80,17 @@ if [[ -f /etc/systemd/system/csuite-finder.service ]]; then
   ok "CSuiteFinder is installed here; leaving it alone"
 fi
 
+# This script chowns the tree to the app user so the build can write to it, which
+# then makes git refuse to run here as root: since 2.35.2 it will not touch a
+# repository owned by somebody else, in case a hook belongs to them too. The
+# exception is safe for a directory root administers and a user root created, and
+# adding it here means `git pull` keeps working after the first deploy rather
+# than failing with "dubious ownership" the next time.
+if ! git config --global --get-all safe.directory 2>/dev/null | grep -qxF "$APP_DIR"; then
+  git config --global --add safe.directory "$APP_DIR"
+  ok "allowed root to run git in $APP_DIR"
+fi
+
 if ss -lntp 2>/dev/null | grep -q ":$PORT "; then
   if ! systemctl is-active --quiet "$SERVICE"; then
     die "port $PORT is in use by something that is not $SERVICE. Stop it first."

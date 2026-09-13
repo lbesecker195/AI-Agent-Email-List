@@ -105,9 +105,21 @@ runs out the kernel kills the biggest process rather than the build.
 
 ```bash
 cd /var/www/HoneyTrap/AI-Agent-Email-List
-sudo -u mailer git pull
+sudo git pull
 sudo -u mailer bin/setup-server --release
 ```
+
+Pull as root, not as `mailer`. Root holds the SSH key the clone was made with;
+`mailer` is a system user with no key and no shell. The tree is owned by `mailer`
+so the build can write to it, which makes git refuse to run here as root until
+the directory is marked safe:
+
+```bash
+sudo git config --global --add safe.directory /var/www/HoneyTrap/AI-Agent-Email-List
+```
+
+`deploy.sh` adds that itself, so this is only needed if you pull before running
+it the first time.
 
 `--release` serialises compilation, caps its memory under systemd, and touches
 no database, so it does not matter that migrations have not run yet.
@@ -302,3 +314,13 @@ database has to be named in the URL.
 
 **Port 4005 already in use.** Another copy is running, probably a `mix
 phx.server` left over from testing.
+
+**`fatal: detected dubious ownership in repository`.** The tree belongs to
+`mailer` and you are running git as root. Mark it safe once:
+
+```bash
+sudo git config --global --add safe.directory /var/www/HoneyTrap/AI-Agent-Email-List
+```
+
+Do not chown the tree back to root to work around this. The build writes to
+`_build`, `deps` and its hex cache, and needs to own them.
