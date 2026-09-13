@@ -10,6 +10,9 @@ defmodule EmailProvider.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
+      description: description(),
+      package: package(),
+      source_url: "https://github.com/lbesecker195/AI-Agent-Email-List",
       listeners: [Phoenix.CodeReloader]
     ]
   end
@@ -27,6 +30,23 @@ defmodule EmailProvider.MixProject do
   def cli do
     [
       preferred_envs: [precommit: :test]
+    ]
+  end
+
+  defp description do
+    "An email sending and receiving service: accounts, customer domains with " <>
+      "their own DKIM keys, a Mailgun-shaped REST API, automatic sending warmup, " <>
+      "and content screening in both directions."
+  end
+
+  defp package do
+    [
+      maintainers: ["Logan Besecker <me@LoganBesecker.com>", "<lbesecker195@gmail.com>"],
+      links: %{
+        "GitHub" => "https://github.com/lbesecker195/AI-Agent-Email-List",
+        "Service" => "https://ai.agentemaillist.com",
+        "Agent docs" => "https://ai.agentemaillist.com/llms.txt"
+      }
     ]
   end
 

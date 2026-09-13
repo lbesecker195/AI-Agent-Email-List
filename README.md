@@ -6,6 +6,9 @@ warmup, and content screening on both directions of mail.
 
 API only — no HTML, no assets.
 
+Maintained by Logan Besecker. Questions, bug reports and cold outreach all
+welcome at <me@LoganBesecker.com> or <lbesecker195@gmail.com>.
+
 ## Running it
 
 ```bash
