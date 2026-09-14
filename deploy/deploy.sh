@@ -445,11 +445,25 @@ if [[ $DO_SSL -eq 1 ]]; then
   fi
 else
   step "Verifying over HTTP"
-  if curl -sf --max-time 10 "http://$DOMAIN/health" >/dev/null 2>&1; then
-    ok "http://$DOMAIN/health answers"
-  else
-    warn "http://$DOMAIN/health did not answer from outside; DNS or firewall"
-  fi
+  # `curl -sf` treats a 301 as success, and before TLS exists every request is
+  # a 301 to a scheme nothing serves. Checking the status explicitly is the
+  # difference between "the site works" and "the site redirects into a void".
+  http_status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "http://$DOMAIN/health" || echo 000)
+  case "$http_status" in
+    200)
+      ok "http://$DOMAIN/health answers"
+      ;;
+    301|302|308)
+      warn "http://$DOMAIN/health redirects to HTTPS, which is not set up yet."
+      warn "That is expected with --no-ssl. Point DNS here, then re-run without it."
+      ;;
+    000)
+      warn "http://$DOMAIN/health did not answer at all; DNS may still point elsewhere"
+      ;;
+    *)
+      warn "http://$DOMAIN/health answered $http_status"
+      ;;
+  esac
 fi
 
 # ---------------------------------------------------------------- firewall
