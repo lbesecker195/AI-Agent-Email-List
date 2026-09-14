@@ -10,6 +10,48 @@ defmodule EmailProviderWeb.PageController do
 
   EEx.function_from_file(:defp, :render_llms, @llms_template, [:assigns])
 
+  @contact "me@LoganBesecker.com"
+
+  @doc """
+  GET /
+
+  Content-negotiated, because two very different callers arrive here. A person
+  following the domain gets a page describing the service; anything asking for
+  JSON gets a descriptor it can parse. Returning a bare 404 at the root of a
+  service, which is what an API-only app does by default, tells neither of them
+  anything.
+  """
+  def index(conn, _params) do
+    if wants_html?(conn) do
+      conn
+      |> put_resp_content_type("text/html")
+      |> send_resp(200, EmailProviderWeb.PageHTML.index(base_url(conn), @contact))
+    else
+      json(conn, %{
+        service: "Agent Email List",
+        description: "Email sending and receiving API. Mailgun-shaped.",
+        documentation: base_url(conn) <> "/llms.txt",
+        health: base_url(conn) <> "/health",
+        source: "https://github.com/lbesecker195/AI-Agent-Email-List",
+        contact: @contact,
+        start_here: %{
+          method: "POST",
+          url: base_url(conn) <> "/v1/accounts",
+          params: %{email: "you@company.com", password: "a sufficiently long password"}
+        }
+      })
+    end
+  end
+
+  # Browsers ask for text/html explicitly. Everything else — curl with no
+  # headers, an HTTP library, an agent — gets JSON, which is the safer default
+  # for a service whose every other endpoint speaks it.
+  defp wants_html?(conn) do
+    conn
+    |> Plug.Conn.get_req_header("accept")
+    |> Enum.any?(&String.contains?(&1, "text/html"))
+  end
+
   @doc """
   GET /llms.txt
 

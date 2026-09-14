@@ -3,6 +3,49 @@ defmodule EmailProviderWeb.PageControllerTest do
 
   alias EmailProvider.Warmup
 
+  describe "GET /" do
+    test "a browser gets a page, not a 404", %{conn: conn} do
+      body =
+        conn
+        |> put_req_header("accept", "text/html,application/xhtml+xml,*/*;q=0.8")
+        |> get("/")
+        |> html_response(200)
+
+      assert body =~ "Agent Email List"
+      assert body =~ "/llms.txt"
+      assert body =~ "me@LoganBesecker.com"
+    end
+
+    test "anything else gets JSON it can parse", %{conn: conn} do
+      body = conn |> get("/") |> json_response(200)
+
+      assert body["service"] == "Agent Email List"
+      assert body["documentation"] =~ "/llms.txt"
+      assert body["start_here"]["url"] =~ "/v1/accounts"
+    end
+
+    test "both point at the host the caller actually reached", %{conn: conn} do
+      assert conn |> get("/") |> json_response(200) |> Map.get("health") ==
+               "http://www.example.com/health"
+    end
+
+    test "a strict text/html request is still served", %{conn: conn} do
+      # Real browsers send */* as well, which the json-only pipeline accepts by
+      # accident. A client that asks for html and nothing else must not get a 406.
+      body =
+        conn
+        |> put_req_header("accept", "text/html")
+        |> get("/")
+        |> html_response(200)
+
+      assert body =~ "Agent Email List"
+    end
+
+    test "needs no credentials", %{conn: conn} do
+      assert conn |> get("/") |> json_response(200)
+    end
+  end
+
   describe "GET /llms.txt" do
     test "is readable without a key", %{conn: conn} do
       conn = get(conn, "/llms.txt")

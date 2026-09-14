@@ -7,6 +7,14 @@ defmodule EmailProviderWeb.Router do
     plug :accepts, ["json"]
   end
 
+  # The landing page and llms.txt answer to people and to programs, so they
+  # cannot sit behind a json-only pipeline. A browser usually sends `*/*` too and
+  # would scrape through by accident, but a client asking for exactly text/html
+  # would get a 406 from the pipeline before reaching the controller.
+  pipeline :public do
+    plug :accepts, ["html", "json", "txt"]
+  end
+
   # Authenticated, but not yet scoped to a domain.
   pipeline :authed do
     plug ApiAuth
@@ -158,12 +166,18 @@ defmodule EmailProviderWeb.Router do
   end
 
   scope "/", EmailProviderWeb do
-    pipe_through :api
+    pipe_through :public
 
-    get "/health", HealthController, :show
+    get "/", PageController, :index
 
     # Agent-facing description of this API. Unauthenticated on purpose: an
     # agent has to be able to read how to get a key before it has one.
     get "/llms.txt", PageController, :llms
+  end
+
+  scope "/", EmailProviderWeb do
+    pipe_through :api
+
+    get "/health", HealthController, :show
   end
 end
