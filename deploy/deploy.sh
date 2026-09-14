@@ -118,16 +118,6 @@ fi
 command -v mix >/dev/null || die "Elixir is not installed. Install Erlang/Elixir, then re-run."
 ok "elixir $(elixir --version | awk '/^Elixir/{print $2}')"
 
-# Root having mix says nothing about the app user having it, and the build runs
-# as the app user. A version manager installed under /root puts Elixir somewhere
-# this user cannot reach, and sudo resets PATH to secure_path besides. Better to
-# say so here than to fail several minutes into a build.
-if ! sudo -u "$APP_USER" env HOME="$APP_DIR" bash -lc 'command -v mix' >/dev/null 2>&1; then
-  die "$APP_USER cannot run mix. Elixir is probably installed under /root or via
-    a version manager that user cannot see. Install it system-wide, for instance
-    to /usr/local/bin, so both users reach the same one."
-fi
-ok "$APP_USER can run mix too"
 
 # ----------------------------------------------------------------- memory
 
@@ -296,6 +286,20 @@ sudo -u "$APP_USER" test -r "$ENV_FILE" ||
 if [[ $DO_BUILD -eq 1 ]]; then
   step "Building the release (this is the slow part)"
   chown -R "$APP_USER:$APP_USER" "$APP_DIR"
+
+  # Root having mix says nothing about the app user having it, and the build runs
+  # as the app user: a version manager installed under /root puts Elixir where
+  # this user cannot reach it, and sudo resets PATH to secure_path besides.
+  #
+  # Checked here rather than in preflight because the app user does not exist
+  # until a few steps ago, and `sudo -u` on a missing user fails in a way that
+  # reads exactly like a missing Elixir.
+  if ! sudo -u "$APP_USER" env HOME="$APP_DIR" bash -lc 'command -v mix' >/dev/null 2>&1; then
+    die "$APP_USER cannot run mix. Elixir is probably installed under /root, or
+    via a version manager that this user cannot see. Install it system-wide, for
+    instance into /usr/local/bin, so both users reach the same one."
+  fi
+  ok "$APP_USER can run mix"
 
   # HOME inside the app tree, because it is the directory we just chowned: hex
   # and rebar caches have to land somewhere the service user can write.
