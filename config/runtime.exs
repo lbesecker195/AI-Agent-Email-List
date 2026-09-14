@@ -87,20 +87,33 @@ if config_env() != :test do
   # named, otherwise direct delivery to each recipient's MX if it is turned on,
   # otherwise the local file writer, which is the safe default: nothing leaves
   # the machine until somebody says it should.
+  # A variable that is present but empty counts as unset. `SMTP_RELAY=` with
+  # nothing after it reads back as "", which is truthy in Elixir, and would
+  # otherwise select the smarthost adapter with no host to connect to and fail
+  # every send. An env file full of commented examples is exactly where someone
+  # uncomments a line and leaves it blank.
+  present = fn name ->
+    case System.get_env(name) do
+      nil -> nil
+      "" -> nil
+      value -> String.trim(value)
+    end
+  end
+
   cond do
-    System.get_env("SMTP_RELAY") ->
+    present.("SMTP_RELAY") ->
       config :email_provider, EmailProvider.Delivery.Sender,
         adapter: :smtp,
-        relay: System.fetch_env!("SMTP_RELAY"),
+        relay: present.("SMTP_RELAY"),
         port: String.to_integer(System.get_env("SMTP_PORT", "587")),
-        username: System.get_env("SMTP_USERNAME"),
-        password: System.get_env("SMTP_PASSWORD"),
+        username: present.("SMTP_USERNAME"),
+        password: present.("SMTP_PASSWORD"),
         tls: :always
 
     System.get_env("DIRECT_DELIVERY") == "true" ->
       config :email_provider, EmailProvider.Delivery.Sender,
         adapter: EmailProvider.Delivery.Sender.DirectMX,
-        helo_name: System.get_env("SMTP_HOSTNAME", "ai.agentemaillist.com"),
+        helo_name: present.("SMTP_HOSTNAME") || "ai.agentemaillist.com",
         direct_port: String.to_integer(System.get_env("DIRECT_SMTP_PORT", "25")),
         timeout: String.to_integer(System.get_env("DIRECT_SMTP_TIMEOUT_MS", "30000"))
 

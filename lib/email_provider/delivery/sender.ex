@@ -81,8 +81,19 @@ defmodule EmailProvider.Delivery.Sender do
         {:error, {kind, reason}}
     end
 
+    # Blank is the same as absent. A config that carries username: "" would
+    # otherwise make us offer AUTH with empty credentials, which a smarthost
+    # rejects with a message about the password rather than about the blank.
+    defp blank_to_nil(nil), do: nil
+
+    defp blank_to_nil(value) when is_binary(value),
+      do: if(String.trim(value) == "", do: nil, else: value)
+
+    defp blank_to_nil(value), do: value
+
     defp maybe_auth(smtp_opts, opts) do
-      case {Keyword.get(opts, :username), Keyword.get(opts, :password)} do
+      case {blank_to_nil(Keyword.get(opts, :username)),
+            blank_to_nil(Keyword.get(opts, :password))} do
         {nil, _} ->
           smtp_opts
 
