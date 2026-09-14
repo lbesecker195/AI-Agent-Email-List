@@ -308,7 +308,6 @@ if [[ $DO_BUILD -eq 1 ]]; then
   if [[ $mem_mb -ge 3500 ]]; then
     build_schedulers=""
     build_make="-j$(nproc)"
-    MEMORY_MAX="${MEMORY_MAX_OVERRIDE:-$(( mem_mb / 2 ))M}"
     ok "building in parallel across $(nproc) cores (${mem_mb}MB RAM)"
   else
     build_schedulers="+S 1:1"
