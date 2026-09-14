@@ -83,7 +83,15 @@ defmodule EmailProvider.Enrichment.CSuiteFinder do
 
   defp config, do: Application.get_env(:email_provider, __MODULE__, [])
   defp enabled?, do: Keyword.get(config(), :enabled, true)
-  defp api_key, do: Keyword.get(config(), :api_key)
+  # See EmailProvider.Moderation: an empty string is not a key.
+  defp api_key do
+    case Keyword.get(config(), :api_key) do
+      nil -> nil
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: value
+      value -> value
+    end
+  end
+
   defp base_url, do: Keyword.get(config(), :base_url, "https://csuitefinder.com")
   defp timeout, do: Keyword.get(config(), :timeout, 10_000)
 end

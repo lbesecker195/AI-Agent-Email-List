@@ -74,19 +74,6 @@ config :email_provider, EmailProviderWeb.Endpoint,
 # these in config/test.exs — a stray environment variable on a developer's
 # machine must not be able to point the suite at a live relay or a paid API.
 if config_env() != :test do
-  # -- Content screening -----------------------------------------------------
-  config :email_provider, EmailProvider.Moderation,
-    enabled: System.get_env("MODERATION_ENABLED", "true") == "true",
-    api_key: System.get_env("OPENAI_API_KEY"),
-    model: System.get_env("MODERATION_MODEL", "omni-moderation-latest"),
-    on_error: if(System.get_env("MODERATION_ON_ERROR") == "block", do: :block, else: :allow)
-
-  # -- Outbound --------------------------------------------------------------
-  #
-  # Three ways out, in order of how much was configured. A smarthost if one is
-  # named, otherwise direct delivery to each recipient's MX if it is turned on,
-  # otherwise the local file writer, which is the safe default: nothing leaves
-  # the machine until somebody says it should.
   # A variable that is present but empty counts as unset. `SMTP_RELAY=` with
   # nothing after it reads back as "", which is truthy in Elixir, and would
   # otherwise select the smarthost adapter with no host to connect to and fail
@@ -100,6 +87,19 @@ if config_env() != :test do
     end
   end
 
+  # -- Content screening -----------------------------------------------------
+  config :email_provider, EmailProvider.Moderation,
+    enabled: System.get_env("MODERATION_ENABLED", "true") == "true",
+    api_key: present.("OPENAI_API_KEY"),
+    model: System.get_env("MODERATION_MODEL", "omni-moderation-latest"),
+    on_error: if(System.get_env("MODERATION_ON_ERROR") == "block", do: :block, else: :allow)
+
+  # -- Outbound --------------------------------------------------------------
+  #
+  # Three ways out, in order of how much was configured. A smarthost if one is
+  # named, otherwise direct delivery to each recipient's MX if it is turned on,
+  # otherwise the local file writer, which is the safe default: nothing leaves
+  # the machine until somebody says it should.
   cond do
     present.("SMTP_RELAY") ->
       config :email_provider, EmailProvider.Delivery.Sender,
@@ -128,12 +128,12 @@ if config_env() != :test do
     min_interval_seconds: String.to_integer(System.get_env("PROFILE_MIN_INTERVAL_SECONDS", "0"))
 
   config :email_provider, EmailProvider.Profiles.Generator,
-    api_key: System.get_env("OPENAI_API_KEY"),
+    api_key: present.("OPENAI_API_KEY"),
     model: System.get_env("PROFILE_MODEL", "gpt-4o-mini")
 
   config :email_provider, EmailProvider.Enrichment.CSuiteFinder,
     enabled: true,
-    api_key: System.get_env("CSUITEFINDER_API_KEY"),
+    api_key: present.("CSUITEFINDER_API_KEY"),
     base_url: System.get_env("CSUITEFINDER_BASE_URL", "https://csuitefinder.com")
 
   # -- What customers publish in DNS ----------------------------------------

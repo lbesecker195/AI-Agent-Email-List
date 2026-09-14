@@ -221,6 +221,35 @@ defmodule EmailProvider.ProfilesTest do
     end
   end
 
+  describe "an empty API key" do
+    # An env file that carries `OPENAI_API_KEY=` with nothing after it used to
+    # read as "", which is truthy: the model adapter was chosen, every refresh
+    # got a 401, and the deterministic builder that would have worked sat unused.
+    test "is not treated as a key", %{user: user, domain: domain} do
+      previous = Application.get_env(:email_provider, Generator, [])
+      Application.put_env(:email_provider, Generator, api_key: "")
+      on_exit(fn -> Application.put_env(:email_provider, Generator, previous) end)
+
+      assert Generator.openai_key() == nil
+      assert Generator.adapter() == Generator.Structured
+
+      {:ok, _} = Mail.send_message(user, domain, send_params(domain))
+
+      profile = Profiles.get(user)
+      assert profile.generator == "structured"
+      assert profile.description =~ "Ada Lovelace"
+      assert is_nil(profile.last_error)
+    end
+
+    test "whitespace only is not a key either" do
+      previous = Application.get_env(:email_provider, Generator, [])
+      Application.put_env(:email_provider, Generator, api_key: "   ")
+      on_exit(fn -> Application.put_env(:email_provider, Generator, previous) end)
+
+      assert Generator.openai_key() == nil
+    end
+  end
+
   describe "the generated text" do
     test "a model-written description is stored and capped at the target length", %{
       user: user,

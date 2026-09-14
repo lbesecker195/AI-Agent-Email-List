@@ -242,6 +242,20 @@ defmodule EmailProvider.MailTest do
     end
   end
 
+  describe "an empty moderation key" do
+    test "is treated as no key, not as a key that fails", %{user: user, domain: domain} do
+      previous = Application.get_env(:email_provider, EmailProvider.Moderation, [])
+
+      # No plug: if this made a request at all, it would try the real network.
+      Application.put_env(:email_provider, EmailProvider.Moderation, enabled: true, api_key: "")
+      on_exit(fn -> Application.put_env(:email_provider, EmailProvider.Moderation, previous) end)
+
+      assert {:ok, [message]} = Mail.send_message(user, domain, send_params(domain))
+      assert message.moderation_action == "not_screened"
+      assert is_nil(message.moderation_checked_at)
+    end
+  end
+
   describe "suppressions" do
     test "drops a suppressed recipient and sends to the rest", %{user: user, domain: domain} do
       {:ok, _} = Suppressions.add(domain, "bounce", "bad@elsewhere.test", %{reason: "550"})

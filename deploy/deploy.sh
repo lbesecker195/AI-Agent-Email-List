@@ -228,6 +228,15 @@ SMTP_PASSWORD=${SMTP_PASSWORD:-}"
 DIRECT_LINE=""
 [[ "${DIRECT_DELIVERY:-}" == "true" ]] && DIRECT_LINE="DIRECT_DELIVERY=true"
 
+# Written only when they have a value. A line like `OPENAI_API_KEY=` reads back
+# as an empty string, which is not nil, so the code would take it for a real key
+# and every screening call would come back 401.
+OPTIONAL_KEYS=""
+[[ -n "${OPENAI_API_KEY:-}" ]] && OPTIONAL_KEYS="OPENAI_API_KEY=$OPENAI_API_KEY"
+[[ -n "${CSUITEFINDER_API_KEY:-}" ]] &&
+  OPTIONAL_KEYS="$OPTIONAL_KEYS
+CSUITEFINDER_API_KEY=$CSUITEFINDER_API_KEY"
+
 if [[ $ENABLE_MAIL -eq 1 ]]; then
   SMTP_RECEIVE_ENABLED=true
   SMTP_SUBMISSION_ENABLED=true
@@ -257,8 +266,7 @@ SMTP_SUBMISSION_ENABLED=${SMTP_SUBMISSION_ENABLED:-false}
 $SMTP_RELAY_LINE
 $DIRECT_LINE
 
-OPENAI_API_KEY=${OPENAI_API_KEY:-}
-CSUITEFINDER_API_KEY=${CSUITEFINDER_API_KEY:-}
+$OPTIONAL_KEYS
 ENVEOF
 # root:$APP_USER 640, not root:root 600.
 #

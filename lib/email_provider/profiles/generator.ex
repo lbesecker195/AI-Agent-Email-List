@@ -41,10 +41,24 @@ defmodule EmailProvider.Profiles.Generator do
 
   def config, do: Application.get_env(:email_provider, __MODULE__, [])
 
+  @doc """
+  The key to write descriptions with, or nil.
+
+  An empty string is not a key. Without this the adapter chooser sees `""` as
+  truthy, picks the model adapter, and every profile refresh fails with a 401
+  while the deterministic builder that would have worked sits unused.
+  """
   def openai_key do
-    config()[:api_key] ||
-      Application.get_env(:email_provider, EmailProvider.Moderation, [])[:api_key]
+    present(config()[:api_key]) ||
+      present(Application.get_env(:email_provider, EmailProvider.Moderation, [])[:api_key])
   end
+
+  defp present(nil), do: nil
+
+  defp present(value) when is_binary(value),
+    do: if(String.trim(value) == "", do: nil, else: value)
+
+  defp present(value), do: value
 
   defp name_of(__MODULE__.OpenAI), do: "openai"
   defp name_of(__MODULE__.Structured), do: "structured"

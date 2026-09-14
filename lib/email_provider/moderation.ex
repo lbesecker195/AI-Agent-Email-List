@@ -162,7 +162,18 @@ defmodule EmailProvider.Moderation do
 
   defp config, do: Application.get_env(:email_provider, __MODULE__, [])
   defp enabled?, do: Keyword.get(config(), :enabled, true)
-  defp api_key, do: Keyword.get(config(), :api_key)
+  # An empty string is not a key. Environment files routinely carry
+  # `OPENAI_API_KEY=` with nothing after it, and treating that as present means
+  # a doomed request with an empty bearer token on every single message.
+  defp api_key do
+    case Keyword.get(config(), :api_key) do
+      nil -> nil
+      "" -> nil
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: value
+      value -> value
+    end
+  end
+
   defp base_url, do: Keyword.get(config(), :base_url, "https://api.openai.com")
   defp model, do: Keyword.get(config(), :model, @model)
   defp timeout, do: Keyword.get(config(), :timeout, 10_000)
