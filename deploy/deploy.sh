@@ -300,13 +300,26 @@ if [[ $DO_BUILD -eq 1 ]]; then
   # HOME inside the app tree, because it is the directory we just chowned: hex
   # and rebar caches have to land somewhere the service user can write.
   #
-  # ELIXIR_ERL_OPTIONS and MAKEFLAGS keep compilation to one process. On a small
-  # box the parallel default is what makes the build the biggest thing running.
+  # Parallelism follows the machine. Serialising compilation is what stops a
+  # 1GB box OOM-killing its neighbours, and it is pure waste on a box with room
+  # to spare: the same build that needs protecting on 1GB should use every core
+  # on 12GB. The threshold is memory rather than cores, because memory is what
+  # actually runs out.
+  if [[ $mem_mb -ge 3500 ]]; then
+    build_schedulers=""
+    build_make="-j$(nproc)"
+    MEMORY_MAX="${MEMORY_MAX_OVERRIDE:-$(( mem_mb / 2 ))M}"
+    ok "building in parallel across $(nproc) cores (${mem_mb}MB RAM)"
+  else
+    build_schedulers="+S 1:1"
+    build_make="-j1"
+    ok "building one process at a time (${mem_mb}MB RAM is not enough to parallelise safely)"
+  fi
   # `-lc`, matching the preflight check: a login shell sources /etc/profile,
   # which is where a system-wide Elixir install usually puts itself on PATH. A
   # check that used a different shell from the build would prove nothing.
   sudo -u "$APP_USER" env HOME="$APP_DIR" MIX_ENV=prod \
-    ELIXIR_ERL_OPTIONS="+S 1:1" MAKEFLAGS=-j1 bash -lc "
+    ELIXIR_ERL_OPTIONS="$build_schedulers" MAKEFLAGS="$build_make" bash -lc "
     set -e
     cd '$APP_DIR'
     mix local.hex --force --if-missing >/dev/null 2>&1 || mix local.hex --force >/dev/null
