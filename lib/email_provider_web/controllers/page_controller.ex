@@ -53,6 +53,19 @@ defmodule EmailProviderWeb.PageController do
   end
 
   @doc """
+  GET /app
+
+  The sign-up and domain dashboard. Static: it drives the same public JSON API
+  from the browser, so there is no second implementation of signup or domain
+  handling on the server to keep in step with the first.
+  """
+  def app(conn, _params) do
+    conn
+    |> put_resp_content_type("text/html")
+    |> send_resp(200, EmailProviderWeb.AppHTML.app())
+  end
+
+  @doc """
   GET /llms.txt
 
   The agent-facing description of this API.

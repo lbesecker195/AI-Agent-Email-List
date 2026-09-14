@@ -46,6 +46,40 @@ defmodule EmailProviderWeb.PageControllerTest do
     end
   end
 
+  describe "GET /app" do
+    test "serves the dashboard without credentials", %{conn: conn} do
+      # It has to be reachable before you have an account; that is its job.
+      body = conn |> get("/app") |> html_response(200)
+
+      assert body =~ "Create an account"
+      assert body =~ "Sign in"
+      assert body =~ "Add domain"
+    end
+
+    test "holds a session token, never an API key", %{conn: conn} do
+      body = conn |> get("/app") |> html_response(200)
+
+      # A session expires; an API key does not and carries every scope. One of
+      # those belongs in browser storage and the other does not.
+      assert body =~ "/v1/accounts/login"
+      assert body =~ "sessionStorage"
+      refute body =~ "localStorage"
+    end
+
+    test "drives the same public API rather than a second implementation", %{conn: conn} do
+      body = conn |> get("/app") |> html_response(200)
+
+      for path <- ["/v1/accounts", "/v3/domains", "/verify"] do
+        assert body =~ path, "the page should call #{path}"
+      end
+    end
+
+    test "the landing page points at it", %{conn: conn} do
+      body = conn |> put_req_header("accept", "text/html") |> get("/") |> html_response(200)
+      assert body =~ ~s(href="/app")
+    end
+  end
+
   describe "GET /llms.txt" do
     test "is readable without a key", %{conn: conn} do
       conn = get(conn, "/llms.txt")

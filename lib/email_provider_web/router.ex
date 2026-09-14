@@ -169,6 +169,7 @@ defmodule EmailProviderWeb.Router do
     pipe_through :public
 
     get "/", PageController, :index
+    get "/app", PageController, :app
 
     # Agent-facing description of this API. Unauthenticated on purpose: an
     # agent has to be able to read how to get a key before it has one.
