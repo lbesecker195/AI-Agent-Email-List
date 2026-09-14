@@ -1,0 +1,58 @@
+<.layout title="Account" flash={@flash} current_user={@current_user} active={:account}>
+  <h1>Account</h1>
+  <p class="lede">{@current_user.email}</p>
+
+  <div :if={@new_key} class="card">
+    <p style="margin:0 0 0.5rem"><strong>Your new API key.</strong> This is the only time it is shown.</p>
+    <pre style="margin:0 0 0.5rem">{@new_key}</pre>
+    <p class="hint" style="margin:0">
+      Only a hash is stored, so it cannot be shown again. If it is lost, revoke it
+      and make another.
+    </p>
+  </div>
+
+  <h2>API keys</h2>
+  <p class="hint">
+    Send these as <code>Authorization: Bearer KEY</code>, or as HTTP Basic with
+    the username <code>api</code>, which is what Mailgun clients do.
+  </p>
+
+  <div :if={@keys == []} class="card">
+    <p style="margin:0">No keys yet.</p>
+  </div>
+
+  <div :if={@keys != []} class="scroll">
+    <table>
+      <tr>
+        <th>Prefix</th>
+        <th>Label</th>
+        <th>Created</th>
+        <th>Last used</th>
+        <th></th>
+      </tr>
+      <tr :for={key <- @keys}>
+        <td class="mono">{key.prefix}…</td>
+        <td>{key.label || "—"}</td>
+        <td class="hint">{Calendar.strftime(key.inserted_at, "%d %b %Y")}</td>
+        <td class="hint">
+          {if key.last_used_at, do: Calendar.strftime(key.last_used_at, "%d %b %Y"), else: "never"}
+        </td>
+        <td>
+          <form action={"/account/keys/#{key.id}/revoke"} method="post" class="inline-form">
+            <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+            <button class="link" type="submit">Revoke</button>
+          </form>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <h2>New key</h2>
+  <form action="/account/keys" method="post" class="row">
+    <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+    <div class="grow">
+      <input name="label" type="text" placeholder="What is it for?" aria-label="Label" />
+    </div>
+    <button type="submit">Create key</button>
+  </form>
+</.layout>

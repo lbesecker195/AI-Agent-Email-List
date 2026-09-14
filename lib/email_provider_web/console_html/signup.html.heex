@@ -1,0 +1,38 @@
+<.layout title="Create an account" flash={@flash}>
+  <h1>Create an account</h1>
+  <p class="lede">
+    Send email from your own domain over a REST API. Free, and Mailgun-shaped,
+    so most Mailgun clients work against it unchanged.
+  </p>
+
+  <form action="/signup" method="post" style="max-width:24rem">
+    <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+
+    <label for="email">Email address</label>
+    <input id="email" name="email" type="email" autocomplete="email" required value={@email} />
+
+    <label for="name">Name <span class="hint">(optional)</span></label>
+    <input id="name" name="name" type="text" autocomplete="name" value={@name} />
+
+    <label for="password">Password</label>
+    <input
+      id="password"
+      name="password"
+      type="password"
+      autocomplete="new-password"
+      required
+      minlength="12"
+    />
+    <p class="hint" style="margin:-0.6rem 0 1rem">At least 12 characters.</p>
+
+    <button type="submit">Create account</button>
+  </form>
+
+  <p class="hint" style="margin-top:1.5rem">
+    Already have one? <a href="/login">Sign in</a>.
+  </p>
+  <p class="hint">
+    Building an agent? <a href="/llms.txt"><code>/llms.txt</code></a>
+    describes the whole API, and you can sign up with one POST.
+  </p>
+</.layout>

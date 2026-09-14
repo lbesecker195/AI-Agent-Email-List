@@ -266,6 +266,20 @@ One number it does not have: outbound messages refused by content screening.
 They are rejected before anything is stored, so they leave no row and no event.
 The dashboard says so rather than omitting it silently.
 
+### For people
+`/signup`, `/login`, then `/domains`, `/send`, `/messages`, `/account`. Ordinary
+server-rendered pages, one URL each, so they can be linked and bookmarked.
+
+They are a client of the same contexts the JSON API uses, not a second
+implementation: adding a domain from the form and from `POST /v3/domains` run
+the same code. The session holds a user id and nothing else, looked up per
+request, so suspending an account takes effect immediately rather than when its
+session expires.
+
+HEEx rather than the string templates the landing page uses, because these
+render addresses, domain names and subject lines. All of that is customer input
+and `~H` escapes it on the way out.
+
 ### For agents
 `GET /llms.txt` — an agent-facing description of this API, needing no key. It
 is rendered from the running service, so the sending ladder in it is the ladder

@@ -17,7 +17,7 @@ defmodule EmailProviderWeb do
   those modules here.
   """
 
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
+  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt console.css)
 
   def router do
     quote do
@@ -32,6 +32,31 @@ defmodule EmailProviderWeb do
   def channel do
     quote do
       use Phoenix.Channel
+    end
+  end
+
+  @doc """
+  HEEx templates for the browser console.
+
+  The JSON API has no view layer and needs none. These exist for the pages a
+  person uses, where every value on screen came from a customer and has to be
+  escaped on the way out.
+  """
+  def html do
+    quote do
+      use Phoenix.Component
+
+      import Phoenix.Controller, only: [get_csrf_token: 0]
+
+      unquote(html_helpers())
+    end
+  end
+
+  defp html_helpers do
+    quote do
+      # No `use Phoenix.HTML`: in 4.x that pulls PhoenixHTMLHelpers, the old
+      # tag-builder API, which HEEx makes unnecessary.
+      import Phoenix.HTML, only: [raw: 1]
     end
   end
 

@@ -1,0 +1,59 @@
+<.layout title="Send" flash={@flash} current_user={@current_user} active={:send}>
+  <h1>Send a message</h1>
+
+  <div :if={@sendable == []} class="card">
+    <p style="margin:0 0 0.5rem">No verified domain yet, so there is nothing to send from.</p>
+    <p class="hint" style="margin:0">
+      <a href="/domains">Add a domain</a> and publish its DNS records first.
+    </p>
+  </div>
+
+  <form :if={@sendable != []} action="/send" method="post">
+    <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+
+    <label for="domain">From domain</label>
+    <select id="domain" name="domain">
+      <option :for={d <- @sendable} value={d.name} selected={d.name == @params["domain"]}>
+        {d.name}
+      </option>
+    </select>
+
+    <label for="from">From</label>
+    <input
+      id="from"
+      name="from"
+      type="text"
+      required
+      placeholder="you@yourdomain.com"
+      value={@params["from"]}
+    />
+    <p class="hint" style="margin:-0.6rem 0 1rem">
+      Must be an address at the domain above, or a subdomain of it.
+    </p>
+
+    <label for="to">To</label>
+    <input
+      id="to"
+      name="to"
+      type="text"
+      required
+      placeholder="someone@example.com, another@example.com"
+      value={@params["to"]}
+    />
+
+    <label for="subject">Subject</label>
+    <input id="subject" name="subject" type="text" value={@params["subject"]} />
+
+    <label for="text">Message</label>
+    <textarea id="text" name="text" required>{@params["text"]}</textarea>
+
+    <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1.25rem">
+      <input type="checkbox" name="test_mode" value="yes" checked style="width:auto;margin:0" />
+      <span>
+        Test mode — run the whole pipeline but send nothing. Costs no daily allowance.
+      </span>
+    </label>
+
+    <button type="submit">Send</button>
+  </form>
+</.layout>

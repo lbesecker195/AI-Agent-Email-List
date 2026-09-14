@@ -11,6 +11,18 @@ defmodule EmailProviderWeb.Router do
   # cannot sit behind a json-only pipeline. A browser usually sends `*/*` too and
   # would scrape through by accident, but a client asking for exactly text/html
   # would get a 406 from the pipeline before reaching the controller.
+  # Pages a person uses: a session cookie, CSRF protection on every form, and the
+  # security headers a JSON API has no use for.
+  pipeline :browser do
+    plug :accepts, ["html"]
+    plug :fetch_session
+    plug :fetch_flash
+    plug :protect_from_forgery
+    plug :put_secure_browser_headers
+    plug EmailProviderWeb.Plugs.BrowserAuth
+    plug :put_root_layout, false
+  end
+
   pipeline :public do
     plug :accepts, ["html", "json", "txt"]
   end
@@ -185,6 +197,32 @@ defmodule EmailProviderWeb.Router do
     pipe_through :admin
 
     get "/stats", AdminController, :stats
+  end
+
+  # -- the browser console -------------------------------------------------
+
+  scope "/", EmailProviderWeb do
+    pipe_through :browser
+
+    get "/signup", RegistrationController, :new
+    post "/signup", RegistrationController, :create
+    get "/login", SessionController, :new
+    post "/login", SessionController, :create
+    post "/logout", SessionController, :delete
+
+    get "/domains", ConsoleController, :domains
+    post "/domains", ConsoleController, :create_domain
+    get "/domains/:name", ConsoleController, :domain
+    post "/domains/:name/verify", ConsoleController, :verify_domain
+
+    get "/send", ConsoleController, :send_form
+    post "/send", ConsoleController, :send_message
+
+    get "/messages", ConsoleController, :messages
+
+    get "/account", ConsoleController, :account
+    post "/account/keys", ConsoleController, :create_key
+    post "/account/keys/:id/revoke", ConsoleController, :revoke_key
   end
 
   scope "/", EmailProviderWeb do

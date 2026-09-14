@@ -64,8 +64,9 @@ defmodule EmailProviderWeb.PageHTML do
       so most Mailgun clients work against it unchanged.</p>
 
       <h2>Start</h2>
-      <p><a href="/app"><strong>Create an account</strong></a> — then add a domain,
-      publish the DNS records it hands back, verify, and send.</p>
+      <p><a href="/signup"><strong>Create an account</strong></a> — then add a domain,
+      publish the DNS records it hands back, verify, and send. Free.
+      Already have one? <a href="/login">Sign in</a>.</p>
       <p>Or from a terminal, which gets you the same API key:</p>
       <pre><code>curl -X POST #{base_url}/v1/accounts \\
       -d 'email=you@company.com' \\

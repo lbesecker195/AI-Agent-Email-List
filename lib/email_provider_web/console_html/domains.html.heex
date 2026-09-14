@@ -1,0 +1,48 @@
+<.layout title="Domains" flash={@flash} current_user={@current_user} active={:domains}>
+  <h1>Domains</h1>
+  <p class="lede">
+    Mail is sent from a domain you own. Add one, publish the two DNS records it
+    gives you, then verify.
+  </p>
+
+  <div :if={@domains == []} class="card">
+    <p style="margin:0">
+      No domains yet. Add one below and we will show you exactly what to publish.
+    </p>
+  </div>
+
+  <div :for={domain <- @domains} class="card">
+    <div class="card-head">
+      <h3><a href={"/domains/#{domain.name}"}>{domain.name}</a></h3>
+      <span class={["pill", domain.state == "active" && "active"]}>{domain.state}</span>
+    </div>
+    <p class="hint" style="margin:0.45rem 0 0">
+      <span :if={domain.state == "active"}>
+        Sending {domain.warmup.sent_today} of {domain.warmup.daily_limit} today, on rung {domain.warmup.stage} of {domain.warmup.stage_count}.
+      </span>
+      <span :if={domain.state != "active"}>
+        Waiting on DNS. <a href={"/domains/#{domain.name}"}>See the records</a>.
+      </span>
+    </p>
+  </div>
+
+  <h2>Add a domain</h2>
+  <form action="/domains" method="post" class="row">
+    <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+    <div class="grow">
+      <input
+        name="name"
+        type="text"
+        placeholder="mail.yourcompany.com"
+        required
+        aria-label="Domain name"
+      />
+    </div>
+    <button type="submit">Add domain</button>
+  </form>
+  <p class="hint">
+    A subdomain such as <code>mail.yourcompany.com</code>
+    is usually better than the bare domain: it keeps this service's sending
+    reputation separate from your everyday email.
+  </p>
+</.layout>

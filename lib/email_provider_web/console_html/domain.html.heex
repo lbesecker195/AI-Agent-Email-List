@@ -1,0 +1,64 @@
+<.layout title={@domain.name} flash={@flash} current_user={@current_user} active={:domains}>
+  <h1>{@domain.name}</h1>
+  <p class="lede">
+    <span :if={@domain.state == "active"}>Verified. This domain can send.</span>
+    <span :if={@domain.state != "active"}>
+      Not verified yet, so it cannot send. Publish the required records below.
+    </span>
+  </p>
+
+  <.progress domain={@domain} />
+
+  <form action={"/domains/#{@domain.name}/verify"} method="post" class="inline-form">
+    <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+    <button type="submit">Check DNS now</button>
+  </form>
+  <p class="hint" style="margin-top:0.75rem">
+    DNS takes anywhere from a few minutes to a few hours to propagate. Checking
+    more often than every few minutes will not make it faster.
+  </p>
+
+  <h2>Records to publish</h2>
+  <p class="hint">
+    Add these at whoever runs DNS for <code>{@domain.name}</code>. The two marked
+    required are what verification looks for.
+  </p>
+  <div class="scroll">
+    <table>
+      <tr>
+        <th>Type</th>
+        <th>Name</th>
+        <th>Value</th>
+        <th>Needed for</th>
+        <th>Seen</th>
+      </tr>
+      <tr :for={record <- @records}>
+        <td>{record.record_type}</td>
+        <td class="mono">{record.name}</td>
+        <td class="mono">{record.value}</td>
+        <td>{if record.required, do: "sending (required)", else: record.purpose}</td>
+        <td>{record.valid}</td>
+      </tr>
+    </table>
+  </div>
+
+  <div :if={@domain.state == "active"}>
+    <h2>Sending limits</h2>
+    <p>
+      Rung {@warmup.stage} of {@warmup.stage_count}, {@warmup.daily_limit} a day.
+      {@warmup.sent_today} sent today, {@warmup.remaining_today} left.
+    </p>
+    <p class="hint">
+      Graduates {@warmup.graduates_when}. New domains start small on purpose: one
+      that opens at full volume gets filtered by the receiving side.
+    </p>
+    <p><a class="button" href={"/send?domain=#{@domain.name}"}>Send a message</a></p>
+  </div>
+
+  <h2>SMTP</h2>
+  <p class="hint">
+    Your own mail software can submit through this service on port 587, signing in
+    as <code>{@domain.smtp_login}</code>. The password was shown once when the
+    domain was added; if it is lost, remove the domain and add it again.
+  </p>
+</.layout>

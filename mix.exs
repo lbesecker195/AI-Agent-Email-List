@@ -61,6 +61,14 @@ defmodule EmailProvider.MixProject do
     [
       {:phoenix, "~> 1.8.13"},
       {:phoenix_ecto, "~> 4.5"},
+      # HEEx templates for the browser console. Worth a dependency for the
+      # automatic escaping alone: these pages render addresses, domain names and
+      # subject lines, all of which are attacker-controlled.
+      {:phoenix_html, "~> 4.1"},
+      # For Phoenix.Component and the ~H sigil. No LiveView pages here and no
+      # socket: these are plain server-rendered forms. The dependency is what
+      # HEEx itself lives in.
+      {:phoenix_live_view, "~> 1.0"},
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
       {:swoosh, "~> 1.16"},

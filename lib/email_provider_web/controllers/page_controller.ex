@@ -55,15 +55,11 @@ defmodule EmailProviderWeb.PageController do
   @doc """
   GET /app
 
-  The sign-up and domain dashboard. Static: it drives the same public JSON API
-  from the browser, so there is no second implementation of signup or domain
-  handling on the server to keep in step with the first.
+  Kept as a redirect. It used to be a single-page dashboard, which the
+  server-rendered console replaced; two things doing the same job is worse than
+  one, and an old link should still land somewhere sensible.
   """
-  def app(conn, _params) do
-    conn
-    |> put_resp_content_type("text/html")
-    |> send_resp(200, EmailProviderWeb.AppHTML.app())
-  end
+  def app(conn, _params), do: redirect(conn, to: "/domains")
 
   @doc """
   GET /llms.txt
