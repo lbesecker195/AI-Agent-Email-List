@@ -209,6 +209,9 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -base64 48 | tr -d '\n')}"
+# Opens /admin. Generated rather than left blank, because a blank one leaves the
+# dashboard closed and the operator with no obvious way to open it.
+ADMIN_TOKEN="${ADMIN_TOKEN:-$(openssl rand -hex 24)}"
 POOL_SIZE="${POOL_SIZE:-10}"
 
 if [[ -z "${LE_EMAIL:-}" && -n "${LETSENCRYPT_EMAIL:-}" ]]; then
@@ -249,6 +252,7 @@ MIX_ENV=prod
 PHX_SERVER=true
 
 SECRET_KEY_BASE=$SECRET_KEY_BASE
+ADMIN_TOKEN=$ADMIN_TOKEN
 DATABASE_URL=ecto://$DB_USER:$DB_PASSWORD@localhost/$DB_NAME
 PHX_HOST=$DOMAIN
 
@@ -455,6 +459,16 @@ bold "  Service"
 echo "    systemctl status $SERVICE"
 echo "    journalctl -u $SERVICE -f"
 echo
+bold "  Operator dashboard"
+if [[ $DO_SSL -eq 1 ]]; then
+  echo "    https://$DOMAIN/admin"
+else
+  echo "    http://$DOMAIN/admin"
+fi
+echo "    Token:  $ADMIN_TOKEN"
+echo "    Also in $ENV_FILE, which only root can read."
+echo
+
 bold "  Reachable at"
 if [[ $DO_SSL -eq 1 ]]; then
   echo "    https://$DOMAIN/health"

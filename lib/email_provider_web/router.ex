@@ -15,6 +15,13 @@ defmodule EmailProviderWeb.Router do
     plug :accepts, ["html", "json", "txt"]
   end
 
+  # Guarded by a shared token rather than an API key: these figures span every
+  # account, so no customer credential should ever open them.
+  pipeline :admin do
+    plug :accepts, ["json"]
+    plug EmailProviderWeb.Plugs.AdminAuth
+  end
+
   # Authenticated, but not yet scoped to a domain.
   pipeline :authed do
     plug ApiAuth
@@ -163,6 +170,21 @@ defmodule EmailProviderWeb.Router do
     post "/:domain/complaints", SuppressionController, :create
     get "/:domain/complaints/:address", SuppressionController, :show
     delete "/:domain/complaints/:address", SuppressionController, :delete
+  end
+
+  # The dashboard shell is public and empty; the figures behind it are not. That
+  # split is deliberate: landing on /admin uninvited shows a token prompt rather
+  # than a count of anything.
+  scope "/admin", EmailProviderWeb do
+    pipe_through :public
+
+    get "/", AdminController, :index
+  end
+
+  scope "/admin", EmailProviderWeb do
+    pipe_through :admin
+
+    get "/stats", AdminController, :stats
   end
 
   scope "/", EmailProviderWeb do

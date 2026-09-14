@@ -250,6 +250,22 @@ not probe the recipient's server with a partial SMTP conversation: that is what
 makes validation accurate, and it is also indistinguishable from the
 reconnaissance step of a directory harvest.
 
+### Operator dashboard
+`GET /admin` — service-wide figures: accounts, domains, messages in and out,
+hard bounces, unsubscribes, complaints, screening outcomes, and how verified
+domains are spread across the warmup ladder.
+
+Guarded by `ADMIN_TOKEN`, not by an API key, because these figures span every
+account and no customer credential should open them. With no token set the
+dashboard refuses to open at all, which is the right failure mode for a missing
+environment variable. The page itself is served without a token and carries no
+figures; it fetches `GET /admin/stats` with one, so landing on the URL uninvited
+shows a prompt rather than a count of anything.
+
+One number it does not have: outbound messages refused by content screening.
+They are rejected before anything is stored, so they leave no row and no event.
+The dashboard says so rather than omitting it silently.
+
 ### For agents
 `GET /llms.txt` — an agent-facing description of this API, needing no key. It
 is rendered from the running service, so the sending ladder in it is the ladder

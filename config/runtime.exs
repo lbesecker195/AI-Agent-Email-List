@@ -87,6 +87,10 @@ if config_env() != :test do
     end
   end
 
+  # Operator dashboard. With no token set the dashboard refuses to open at all,
+  # which is the right failure mode for a missing environment variable.
+  config :email_provider, :admin_token, present.("ADMIN_TOKEN")
+
   # -- Content screening -----------------------------------------------------
   config :email_provider, EmailProvider.Moderation,
     enabled: System.get_env("MODERATION_ENABLED", "true") == "true",
