@@ -6,6 +6,10 @@ defmodule EmailProviderWeb.PageHTML do
   generated with `--no-html` and carries no view layer: adding Phoenix.HTML,
   a layout and a templating engine to render a single static page would be more
   moving parts than the page is worth.
+
+  The Read section is built from `EmailProviderWeb.Articles` so a new markdown
+  file under `priv/articles` shows up here on the next compile — no hand-edited
+  link list to keep in sync.
   """
 
   @doc "The landing page. `base_url` is whatever host the visitor actually reached."
@@ -73,14 +77,6 @@ defmodule EmailProviderWeb.PageHTML do
       -d 'email=you@company.com' \\
       -d 'password=a sufficiently long password'</code></pre>
 
-      <h2>Read</h2>
-      <ul>
-        <li><a href="/free-smtp-relay">Free SMTP Relay: Mailgun and SendGrid alternatives</a>
-          <span>Which free SMTP services still have a usable free tier in 2026,
-          what changed when SendGrid ended its permanent free plan, and how to
-          migrate off Mailgun without rewriting your integration.</span></li>
-      </ul>
-
       <h2>Reference</h2>
       <ul>
         <li><a href="/mcp"><code>/mcp</code></a>
@@ -104,6 +100,8 @@ defmodule EmailProviderWeb.PageHTML do
       daily cap and climbs as it proves itself, because a domain that opens at
       volume gets filtered. Both are explained in
       <a href="/llms.txt"><code>/llms.txt</code></a>.</p>
+      
+#{read_section()}
 
       <footer>
         Maintained by Logan Besecker &middot;
@@ -113,5 +111,42 @@ defmodule EmailProviderWeb.PageHTML do
     </body>
     </html>
     """
+  end
+
+  defp read_section do
+    case EmailProviderWeb.Articles.all() do
+      [] ->
+        ""
+
+      articles ->
+        items =
+          Enum.map_join(articles, "\n", fn article ->
+            href = "/" <> escape(article.slug)
+            title = escape(article.list_title || article.heading || article.title)
+            blurb = escape(article.description)
+
+            """
+                    <li><a href="#{href}">#{title}</a>
+                      <span>#{blurb}</span></li>
+            """
+          end)
+
+        """
+              <h2>Read</h2>
+              <ul>
+        #{items}      </ul>
+
+        """
+    end
+  end
+
+  defp escape(nil), do: ""
+
+  defp escape(value) when is_binary(value) do
+    value
+    |> String.replace("&", "&amp;")
+    |> String.replace("<", "&lt;")
+    |> String.replace(">", "&gt;")
+    |> String.replace("\"", "&quot;")
   end
 end
