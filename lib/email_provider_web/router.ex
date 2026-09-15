@@ -241,6 +241,11 @@ defmodule EmailProviderWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :show
+
+    # Model Context Protocol. Authentication is handled inside rather than by a
+    # plug, because create_account has to work for an agent that has no key yet.
+    post "/mcp", MCPController, :rpc
+    get "/mcp", MCPController, :describe
   end
 
   # Articles live at the root so the slug is the keyword and nothing else.

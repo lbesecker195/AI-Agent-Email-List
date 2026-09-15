@@ -31,6 +31,26 @@ today, and finding that out part-way through is worse than knowing now. Check
 
 The way to develop against this without either problem is test mode. Read on.
 
+## If your client speaks MCP, use that instead
+
+This service is a Model Context Protocol server at `<%= @base_url %>/mcp`,
+JSON-RPC 2.0 over HTTP POST. Add it as a remote MCP server and you get the same
+capabilities as tools, with schemas, rather than having to construct the
+requests below yourself.
+
+The one thing worth knowing: `create_account` needs **no credentials**. An agent
+that has just found this server can call it, get an API key back, and send that
+as `Authorization: Bearer <key>` on everything after. No card, no human, no
+waiting for somebody to provision you.
+
+```bash
+curl -X POST <%= @base_url %>/mcp -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+The rest of this file describes the same service as a plain REST API, for
+clients that do not speak MCP.
+
 ## Getting a key
 
 ```bash

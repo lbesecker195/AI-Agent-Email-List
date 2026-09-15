@@ -82,6 +82,10 @@ defmodule EmailProviderWeb.PageHTML do
 
       <h2>Reference</h2>
       <ul>
+        <li><a href="/mcp"><code>/mcp</code></a>
+          <span>A Model Context Protocol server. Add it to an agent and the whole
+          service arrives as tools. <code>create_account</code> needs no credentials,
+          so an agent can open its own account without a human.</span></li>
         <li><a href="/llms.txt"><code>/llms.txt</code></a>
           <span>The full API description, written for AI agents. No key needed.
           Its sending limits are read from the running service, so they are the
