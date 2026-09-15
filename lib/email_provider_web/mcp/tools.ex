@@ -229,6 +229,7 @@ defmodule EmailProviderWeb.MCP.Tools do
           # that one more agent got this far, and by which route.
           EmailProvider.Analytics.report(:account_created,
             sid: Map.get(context, :sid),
+            visitor: EmailProvider.Analytics.visitor_id(user),
             transport: "mcp"
           )
 

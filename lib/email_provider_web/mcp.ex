@@ -68,6 +68,7 @@ defmodule EmailProviderWeb.MCP do
     # software has found this server is the whole adoption question.
     Analytics.report(:run_started,
       sid: context[:sid],
+      visitor: context[:visitor],
       name: client_name(params),
       client_version: get_in(params, ["clientInfo", "version"]),
       protocol: version,
@@ -124,6 +125,7 @@ defmodule EmailProviderWeb.MCP do
         # so a tool added later instruments itself.
         Analytics.report(:tool_called,
           sid: context[:sid],
+          visitor: context[:visitor],
           tool: name,
           outcome: if(match?({:ok, _}, outcome), do: "success", else: "error"),
           latency_ms: System.monotonic_time(:millisecond) - started,
@@ -143,6 +145,7 @@ defmodule EmailProviderWeb.MCP do
       # values that caused it.
       Analytics.report(:error,
         sid: context[:sid],
+        visitor: context[:visitor],
         kind: inspect(exception.__struct__),
         tool: params["name"],
         transport: "mcp"

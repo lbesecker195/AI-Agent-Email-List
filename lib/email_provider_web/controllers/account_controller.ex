@@ -17,7 +17,11 @@ defmodule EmailProviderWeb.AccountController do
 
         # Counted alongside the MCP signups so the two routes in are
         # comparable. The account is not described, only that there is one more.
-        Analytics.report(:account_created, sid: Analytics.random_sid(), transport: "rest")
+        Analytics.report(:account_created,
+          sid: Analytics.session_id(nil, user),
+          visitor: Analytics.visitor_id(user),
+          transport: "rest"
+        )
 
         conn
         |> put_status(:created)

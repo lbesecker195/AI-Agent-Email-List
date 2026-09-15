@@ -173,6 +173,104 @@ defmodule EmailProvider.AnalyticsTest do
     end
   end
 
+  describe "unique usage" do
+    setup do
+      user = user_fixture()
+      {_key, plaintext} = api_key_fixture(user)
+      %{user: user, key: plaintext}
+    end
+
+    test "the same account is one visitor across transports and calls",
+         %{conn: conn, user: user, key: key} do
+      pings =
+        capture(fn ->
+          mcp(conn, "tools/call", %{"name" => "list_domains", "arguments" => %{}}, key)
+
+          build_conn()
+          |> put_req_header("authorization", "Bearer " <> key)
+          |> get("/v3/domains")
+        end)
+
+      visitors = pings |> Enum.map(& &1["visitor"]) |> Enum.uniq()
+
+      assert length(visitors) == 1
+      assert hd(visitors) == EmailProvider.Analytics.visitor_id(user)
+    end
+
+    test "different accounts are different visitors", %{conn: conn, key: key} do
+      {_k, other_key} = api_key_fixture(user_fixture())
+
+      pings =
+        capture(fn ->
+          mcp(conn, "tools/call", %{"name" => "list_domains", "arguments" => %{}}, key)
+
+          mcp(
+            build_conn(),
+            "tools/call",
+            %{"name" => "list_domains", "arguments" => %{}},
+            other_key
+          )
+        end)
+
+      visitors =
+        pings |> Enum.filter(&(&1["event"] == "tool_called")) |> Enum.map(& &1["visitor"])
+
+      assert length(Enum.uniq(visitors)) == 2
+    end
+
+    test "the id is not the account id, and cannot be read back as one", %{user: user} do
+      visitor = EmailProvider.Analytics.visitor_id(user)
+
+      refute visitor == user.id
+      refute visitor =~ user.id
+      assert String.length(visitor) == 16
+    end
+
+    test "a caller with no account is not given an invented identity", %{conn: conn} do
+      [ping] =
+        capture(fn ->
+          mcp(conn, "initialize", %{"protocolVersion" => "2025-06-18"})
+        end)
+
+      # An agent that has found the server but not signed up is genuinely
+      # unidentified. Fingerprinting it would be tracking a stranger.
+      refute Map.has_key?(ping, "visitor")
+    end
+
+    test "one account's calls are one session, not one session each",
+         %{conn: _conn, key: key} do
+      pings =
+        capture(fn ->
+          for _ <- 1..3 do
+            build_conn()
+            |> put_req_header("authorization", "Bearer " <> key)
+            |> get("/v3/domains")
+          end
+        end)
+
+      sids = pings |> Enum.filter(&(&1["event"] == "api_called")) |> Enum.map(& &1["sid"])
+
+      assert length(sids) == 3
+      assert length(Enum.uniq(sids)) == 1
+    end
+
+    test "an MCP session header still wins, so a conversation is the run",
+         %{conn: conn, key: key} do
+      pings =
+        capture(fn ->
+          conn
+          |> put_req_header("mcp-session-id", "conversation-abc")
+          |> then(fn c ->
+            mcp(c, "tools/call", %{"name" => "list_domains", "arguments" => %{}}, key)
+          end)
+        end)
+
+      ping = Enum.find(pings, &(&1["event"] == "tool_called"))
+      assert ping["sid"] == EmailProvider.Analytics.session_id("conversation-abc")
+      assert ping["visitor"]
+    end
+  end
+
   describe "the browser tag" do
     test "is rendered on the landing page, the console and an article", %{conn: conn} do
       Application.put_env(:email_provider, Analytics, uid: "acct_test")

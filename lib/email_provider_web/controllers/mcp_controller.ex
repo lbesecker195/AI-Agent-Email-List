@@ -17,10 +17,13 @@ defmodule EmailProviderWeb.MCPController do
 
   @doc "POST /mcp"
   def rpc(conn, _params) do
+    user = current_user(conn)
+
     context = %{
-      user: current_user(conn),
+      user: user,
       client_ip: EmailProviderWeb.Plugs.SignupLimit.client_ip(conn),
-      sid: session_id(conn)
+      sid: session_id(conn, user),
+      visitor: Analytics.visitor_id(user)
     }
 
     case conn.body_params do
@@ -94,7 +97,7 @@ defmodule EmailProviderWeb.MCPController do
   end
 
   defp describe_for_humans(conn, _params) do
-    Analytics.report(:server_described, sid: session_id(conn), transport: "mcp")
+    Analytics.report(:server_described, sid: session_id(conn, nil), transport: "mcp")
 
     json(conn, %{
       protocol: "Model Context Protocol",
@@ -111,11 +114,11 @@ defmodule EmailProviderWeb.MCPController do
 
   # This transport is stateless, so a run is a request unless the client sent a
   # session header — in which case its whole conversation groups as one.
-  defp session_id(conn) do
+  defp session_id(conn, user) do
     conn
     |> get_req_header("mcp-session-id")
     |> List.first()
-    |> Analytics.session_id()
+    |> Analytics.session_id(user)
   end
 
   defp current_user(conn) do

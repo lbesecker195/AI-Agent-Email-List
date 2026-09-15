@@ -22,11 +22,17 @@ defmodule EmailProviderWeb.Plugs.Analytics do
   def call(conn, _opts) do
     if Analytics.enabled?() do
       started = System.monotonic_time(:millisecond)
-      sid = Analytics.random_sid()
 
       register_before_send(conn, fn sent ->
+        # Read at send time, not on the way in: this plug runs before the one
+        # that authenticates, so the account is only known by the time the
+        # response is going out. Doing it here is what lets a caller's requests
+        # group into one session instead of one session each.
+        user = sent.assigns[:current_user]
+
         Analytics.report(:api_called,
-          sid: sid,
+          sid: Analytics.session_id(nil, user),
+          visitor: Analytics.visitor_id(user),
           controller: short_name(sent.private[:phoenix_controller]),
           action: sent.private[:phoenix_action],
           status: sent.status,

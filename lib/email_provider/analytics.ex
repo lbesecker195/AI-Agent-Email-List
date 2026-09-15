@@ -72,23 +72,65 @@ defmodule EmailProvider.Analytics do
   end
 
   @doc """
+  A stable id for one account, or nil.
+
+  This is what turns "22 sessions" into "how many distinct callers", and the
+  account id is the honest answer to that: it is something we already have,
+  it identifies a customer rather than a person, and it is the unit adoption is
+  actually measured in.
+
+  Hashed with the deployment's secret so it cannot be turned back into an
+  account id by anyone holding the reports, and so the same account reported by
+  two different deployments does not correlate.
+
+  Callers with no account — an agent that has found the server but not signed up
+  — get `nil` rather than a fingerprint. They are genuinely unidentified, and
+  inventing an identifier for them would be tracking a stranger rather than
+  counting a customer.
+  """
+  def visitor_id(%{id: id}) when is_binary(id), do: digest("visitor", id)
+  def visitor_id(_), do: nil
+
+  @doc """
   A session id for one run.
 
-  The MCP session header when the client sent one, so a conversation groups as
-  a conversation; otherwise a random value per request. Never derived from
-  anything about the account — grouping is about a run, not a person.
-  """
-  def session_id(nil), do: random_sid()
-  def session_id(""), do: random_sid()
+  Three cases, in order of how well they describe a run:
 
-  def session_id(header) when is_binary(header) do
+    * the client sent an MCP session header — its conversation is the run;
+    * we know the account — its calls within one half hour are the run, which is
+      what stops a burst of API calls counting as a burst of sessions;
+    * neither — a random value, so unrelated strangers are not merged into one.
+  """
+  def session_id(header, user \\ nil)
+
+  def session_id(header, _user) when is_binary(header) and header != "" do
     # Hashed rather than passed through: a client's own session id is its
     # value to shape as it likes, and may well carry something meaningful to
     # it. The hash groups identically without forwarding whatever that was.
-    :crypto.hash(:sha256, header) |> Base.url_encode64(padding: false) |> binary_part(0, 16)
+    digest("session", header)
   end
 
+  def session_id(_header, %{id: id}) when is_binary(id) do
+    # A tumbling half hour, matching the window the service groups by when no
+    # sid is sent at all.
+    bucket = div(System.system_time(:second), 1_800)
+    digest("session", "#{id}:#{bucket}")
+  end
+
+  def session_id(_header, _user), do: random_sid()
+
   def random_sid, do: :crypto.strong_rand_bytes(12) |> Base.url_encode64(padding: false)
+
+  # Keyed with the deployment secret so these identifiers are meaningless
+  # outside this deployment and cannot be reversed by whoever holds the reports.
+  defp digest(scope, value) do
+    key = Application.get_env(:email_provider, EmailProviderWeb.Endpoint)[:secret_key_base] || ""
+
+    :hmac
+    |> :crypto.mac(:sha256, key, "#{scope}:#{value}")
+    |> Base.url_encode64(padding: false)
+    |> binary_part(0, 16)
+  end
 
   @doc "Whether reporting is switched on. Useful in tests and on the dashboard."
   def enabled?, do: uid() != nil
