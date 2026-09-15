@@ -17,6 +17,7 @@ defmodule EmailProviderWeb.PageHTML do
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Agent Email List — email sending API</title>
+    #{EmailProviderWeb.AnalyticsTag.script_string()}
     <meta name="description" content="Send email from your own domain over a REST API. Mailgun-shaped, with automatic sending warmup and content screening.">
     <style>
       :root {

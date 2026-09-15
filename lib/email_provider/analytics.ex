@@ -93,6 +93,16 @@ defmodule EmailProvider.Analytics do
   @doc "Whether reporting is switched on. Useful in tests and on the dashboard."
   def enabled?, do: uid() != nil
 
+  @doc """
+  The account id, or nil.
+
+  Public because the browser tag needs it in the page. It is an account
+  identifier, not a secret — it travels in every ping and in the HTML of every
+  page — but it still only appears when one is configured, so a self-hosted copy
+  reports nothing and renders no tag.
+  """
+  def account_id, do: uid()
+
   # -- internals -------------------------------------------------------------
 
   defp send_async(uid, event, attrs) do

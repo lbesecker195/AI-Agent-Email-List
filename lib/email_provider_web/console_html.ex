@@ -32,6 +32,7 @@ defmodule EmailProviderWeb.ConsoleHTML do
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{@title} — Agent Email List</title>
         <link rel="stylesheet" href="/console.css" />
+        <EmailProviderWeb.AnalyticsTag.script />
       </head>
       <body>
         <div class="topbar">

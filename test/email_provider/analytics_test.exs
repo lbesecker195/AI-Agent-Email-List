@@ -161,9 +161,39 @@ defmodule EmailProvider.AnalyticsTest do
       assert ping["outcome"] == "refused"
     end
 
-    test "the health check is never reported", %{conn: conn} do
-      pings = capture(fn -> get(conn, "/health") end)
-      assert pings == []
+    test "even the health check is reported, so 'every API call' has no exceptions",
+         %{conn: conn} do
+      [ping] = capture(fn -> get(conn, "/health") end)
+
+      # Its volume says nothing about adoption — the deploy script and any
+      # monitoring poll it — so it is filtered in the dashboard by controller
+      # rather than dropped here.
+      assert ping["controller"] == "HealthController"
+      assert ping["event"] == "api_called"
+    end
+  end
+
+  describe "the browser tag" do
+    test "is rendered on the landing page, the console and an article", %{conn: conn} do
+      Application.put_env(:email_provider, Analytics, uid: "acct_test")
+      on_exit(fn -> Application.put_env(:email_provider, Analytics, uid: nil) end)
+
+      landing = conn |> put_req_header("accept", "text/html") |> get("/") |> html_response(200)
+      assert landing =~ ~s(data-site="acct_test")
+      assert landing =~ "seriouslysimpleanalytics.com/wa.js"
+
+      console = build_conn() |> get("/login") |> html_response(200)
+      assert console =~ ~s(data-site="acct_test")
+    end
+
+    test "a self-hosted copy with no account id ships no tracker", %{conn: conn} do
+      Application.put_env(:email_provider, Analytics, uid: nil)
+
+      landing = conn |> put_req_header("accept", "text/html") |> get("/") |> html_response(200)
+      refute landing =~ "seriouslysimpleanalytics"
+
+      console = build_conn() |> get("/login") |> html_response(200)
+      refute console =~ "seriouslysimpleanalytics"
     end
   end
 

@@ -273,10 +273,12 @@ defmodule EmailProviderWeb.Router do
   end
 
   scope "/", EmailProviderWeb do
-    pipe_through :api
+    pipe_through [:analytics, :api]
 
-    # Deliberately not reported: polled by the deploy script and by monitoring,
-    # so it would be the loudest event and the least informative.
+    # Reported like everything else, though it is the one endpoint whose volume
+    # says nothing about adoption: the deploy script and any monitoring poll it.
+    # Filter it out in the dashboard by controller, rather than here, so "every
+    # API call is an event" stays true without exception.
     get "/health", HealthController, :show
   end
 
