@@ -39,7 +39,7 @@ so you never have to discover it by being refused.
 | Limit | Figure | Notes |
 |---|---|---|
 | Accounts per IP address | <%= @signup_per_hour %> an hour, <%= @signup_per_day %> a day | One account holds many domains. You almost certainly need one. |
-| Domains per account | <%= @domains_new %> before you register one, <%= @domains_committed %> after, <%= @domains_proven %> once one is verified | Verifying a domain is what opens this up. |
+| Domains per account | <%= @domains_unverified %>, rising to <%= @domains_verified %> once any one of them is verified | Verifying is what opens this up. Registering cannot: it is the thing being limited. |
 | API requests per account | <%= @requests_per_minute %> a minute | A pace limit, not a sending limit. If you meet it, you are in a retry loop. |
 | Sending per domain | starts at <%= @first_cap %> a day, climbs | The warmup ladder. `GET /v3/:domain/limits`. |
 | Messages refused by screening | sending pauses at <%= @refusals_before_throttle %> in 24h | Lifts by itself as they age out. |

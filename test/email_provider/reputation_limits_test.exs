@@ -13,10 +13,7 @@ defmodule EmailProvider.ReputationLimitsTest do
   alias EmailProvider.Domains
 
   setup do
-    Application.put_env(:email_provider, EmailProvider.Reputation,
-      domains_new: 1,
-      domains_committed: 1
-    )
+    Application.put_env(:email_provider, EmailProvider.Reputation, domains_unverified: 1)
 
     on_exit(fn -> Application.delete_env(:email_provider, EmailProvider.Reputation) end)
 
@@ -46,7 +43,7 @@ defmodule EmailProvider.ReputationLimitsTest do
       |> json_response(403)
 
     assert body["message"] =~ "limit"
-    assert body["message"] =~ "Verifying"
+    assert body["message"] =~ "verify_domain"
   end
 
   test "the MCP tool explains it in a sentence an agent can act on",
@@ -72,7 +69,7 @@ defmodule EmailProvider.ReputationLimitsTest do
     assert result["isError"]
     text = hd(result["content"])["text"]
     assert text =~ "limit"
-    assert text =~ "Verifying"
+    assert text =~ "verify_domain"
   end
 
   test "the console says so in a flash rather than a blank failure",

@@ -149,9 +149,8 @@ config :email_provider, EmailProviderWeb.Plugs.ApiAuth,
 # before it stops sending. A verified domain is the expensive thing to fake, so
 # it is what the generosity is attached to.
 config :email_provider, EmailProvider.Reputation,
-  domains_new: 3,
-  domains_committed: 10,
-  domains_proven: 50,
+  domains_unverified: 3,
+  domains_verified: 50,
   refusals_before_throttle: 8,
   refusals_before_suspension: 25
 

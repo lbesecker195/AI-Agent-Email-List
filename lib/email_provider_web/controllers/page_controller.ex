@@ -225,9 +225,8 @@ defmodule EmailProviderWeb.PageController do
       signup_per_hour: Keyword.get(signup, :per_hour, 5),
       signup_per_day: Keyword.get(signup, :per_day, 20),
       requests_per_minute: Keyword.get(api, :requests_per_minute, 600),
-      domains_new: Keyword.get(reputation, :domains_new, 3),
-      domains_committed: Keyword.get(reputation, :domains_committed, 10),
-      domains_proven: Keyword.get(reputation, :domains_proven, 50),
+      domains_unverified: Keyword.get(reputation, :domains_unverified, 3),
+      domains_verified: Keyword.get(reputation, :domains_verified, 50),
       refusals_before_throttle: Keyword.get(reputation, :refusals_before_throttle, 8)
     }
   end

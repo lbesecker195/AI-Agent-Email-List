@@ -67,7 +67,7 @@ included, sends nothing, and spends none of the daily allowance.
 | Limit | Figure |
 | --- | --- |
 | Accounts per IP address | 5 an hour, 20 a day |
-| Domains per account | 3, rising to 10 once you register one and 50 once one is verified |
+| Domains per account | 3, rising to 50 once any one of them is verified |
 | API requests per account | 600 a minute — a pace limit, not a sending limit |
 | Sending per domain | starts at 10 a day and climbs the warmup ladder |
 | Screening refusals | sending pauses at 8 in 24 hours, and lifts by itself |

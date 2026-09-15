@@ -47,12 +47,14 @@ defmodule EmailProvider.ReputationTest do
   end
 
   describe "the domain limit" do
-    test "opens up once a domain is verified" do
+    test "verifying opens it up; merely registering does not" do
       user = user_fixture()
       assert Reputation.domain_limit(user) == 3
 
+      # The limit caps registrations, so a registration must not raise it —
+      # otherwise the lower figure gates nothing at all.
       domain_fixture(user, %{verified: false})
-      assert Reputation.domain_limit(user) == 10
+      assert Reputation.domain_limit(user) == 3
 
       domain_fixture(user)
       assert Reputation.domain_limit(user) == 50
@@ -61,13 +63,12 @@ defmodule EmailProvider.ReputationTest do
     test "refuses past the limit, and says how to raise it" do
       user = user_fixture()
 
-      # Ten, not three: the first registration already lifted this account out
-      # of :new, which is the point of the tier.
-      for _ <- 1..10, do: domain_fixture(user, %{verified: false})
+      for _ <- 1..3, do: domain_fixture(user, %{verified: false})
 
       assert {:error, message} = Reputation.can_add_domain?(user)
-      assert message =~ "limit of 10 domains"
-      assert message =~ "Verifying"
+      assert message =~ "limit of 3 domains"
+      assert message =~ "verify_domain"
+      assert message =~ "50"
     end
   end
 

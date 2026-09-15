@@ -12,7 +12,8 @@ defmodule EmailProvider.Reputation do
     * `:new` — signed up, nothing else. Can add a few domains and little else.
       Costs nothing to reach, so it is worth nothing.
     * `:committed` — has registered a domain. Someone chose a name and intends
-      to publish DNS for it.
+      to publish DNS for it. Worth recording, but it buys no extra domains:
+      see `domain_limit/1` for why it cannot.
     * `:proven` — has a verified domain. They control DNS for a real domain,
       which is the first thing in this whole flow that a throwaway cannot fake
       at scale. This is where the limits open up.
@@ -51,14 +52,19 @@ defmodule EmailProvider.Reputation do
   @doc """
   How many domains this account may hold.
 
-  Generous once a domain is verified, because by then the account has done
-  something a bulk abuser will not: proved control of real DNS.
+  Two figures, not three, though there are three tiers. Registering a domain is
+  the action this limit exists to cap, so registering one cannot also be what
+  raises it — an account would reach the higher figure by doing the very thing
+  being limited, and the lower one would gate nothing. `:committed` therefore
+  buys standing without buying headroom here.
+
+  Verification is what opens it up, because that is the step a bulk abuser
+  cannot take cheaply: it needs real DNS on a real domain.
   """
   def domain_limit(user) do
     case tier(user) do
-      :new -> config(:domains_new, 3)
-      :committed -> config(:domains_committed, 10)
-      :proven -> config(:domains_proven, 50)
+      :proven -> config(:domains_verified, 50)
+      _unverified -> config(:domains_unverified, 3)
     end
   end
 
@@ -71,8 +77,9 @@ defmodule EmailProvider.Reputation do
       :ok
     else
       {:error,
-       "This account is at its limit of #{limit} domains. Verifying a domain you already " <>
-         "have raises the limit."}
+       "This account is at its limit of #{limit} domains. Verify one you already have — " <>
+         "publish its DNS records and call verify_domain — and the limit rises to " <>
+         "#{config(:domains_verified, 50)}."}
     end
   end
 
