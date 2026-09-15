@@ -29,6 +29,13 @@ defmodule EmailProviderWeb.Router do
 
   # Guarded by a shared token rather than an API key: these figures span every
   # account, so no customer credential should ever open them.
+  # No `accepts` filter. A Streamable HTTP client opens a stream with
+  # `Accept: text/event-stream`, which a json-only pipeline rejects with 406
+  # before the controller can answer the 405 the transport spec asks for.
+  pipeline :mcp do
+    plug :fetch_query_params
+  end
+
   pipeline :admin do
     plug :accepts, ["json"]
     plug EmailProviderWeb.Plugs.AdminAuth
@@ -242,9 +249,14 @@ defmodule EmailProviderWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :show
+  end
 
-    # Model Context Protocol. Authentication is handled inside rather than by a
-    # plug, because create_account has to work for an agent that has no key yet.
+  # Model Context Protocol. Authentication is handled inside the controller
+  # rather than by a plug, because create_account has to work for an agent that
+  # has no key yet.
+  scope "/", EmailProviderWeb do
+    pipe_through :mcp
+
     post "/mcp", MCPController, :rpc
     get "/mcp", MCPController, :describe
   end

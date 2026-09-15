@@ -286,6 +286,16 @@ defmodule EmailProviderWeb.MCPControllerTest do
   end
 
   describe "GET /mcp" do
+    test "a streaming client is told there is no stream, per the transport spec", %{conn: conn} do
+      # The spec says answer 405 when the server has nothing to push. A
+      # json-only pipeline would reject this with 406 before the controller
+      # could say so, which is what it used to do.
+      conn = conn |> put_req_header("accept", "text/event-stream") |> get("/mcp")
+
+      assert response(conn, 405)
+      assert get_resp_header(conn, "allow") == ["POST"]
+    end
+
     test "explains itself to somebody who pasted the URL into a browser", %{conn: conn} do
       body = conn |> get("/mcp") |> json_response(200)
 
