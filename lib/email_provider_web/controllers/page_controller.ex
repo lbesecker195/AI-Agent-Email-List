@@ -124,6 +124,27 @@ defmodule EmailProviderWeb.PageController do
   end
 
   @doc """
+  GET /.well-known/mcp-registry-auth
+
+  Proves to the MCP registry that whoever publishes under this domain's
+  namespace controls the domain. The value is a public key, so serving it
+  openly is the entire point; the private half never leaves the operator.
+  """
+  def mcp_registry_auth(conn, _params) do
+    case Application.get_env(:email_provider, :mcp_registry_public_key) do
+      key when is_binary(key) and key != "" ->
+        conn
+        |> put_resp_content_type("text/plain")
+        |> send_resp(200, "v=MCPv1; k=ed25519; p=" <> key)
+
+      _ ->
+        conn
+        |> put_resp_content_type("text/plain")
+        |> send_resp(404, "No MCP registry key is configured for this deployment.")
+    end
+  end
+
+  @doc """
   GET /sitemap.xml
 
   Only the pages worth indexing. The console is behind a session and the API is

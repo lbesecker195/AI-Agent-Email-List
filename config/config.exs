@@ -45,6 +45,13 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# Public half of the key that proves domain ownership to the MCP registry.
+# Public by definition: it is served at /.well-known/mcp-registry-auth. The
+# private half lives only with the operator.
+config :email_provider,
+       :mcp_registry_public_key,
+       "6ftFeaKhoTxsxhftOWq320TSptPPeGP5XFEyTnoCgfA="
+
 # -- Warmup ------------------------------------------------------------------
 #
 # Each stage names a daily cap and the condition that graduates it. The first

@@ -235,6 +235,7 @@ defmodule EmailProviderWeb.Router do
     # agent has to be able to read how to get a key before it has one.
     get "/llms.txt", PageController, :llms
     get "/sitemap.xml", PageController, :sitemap
+    get "/.well-known/mcp-registry-auth", PageController, :mcp_registry_auth
   end
 
   scope "/", EmailProviderWeb do

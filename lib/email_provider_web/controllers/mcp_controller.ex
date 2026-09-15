@@ -50,10 +50,45 @@ defmodule EmailProviderWeb.MCPController do
   @doc """
   GET /mcp
 
-  Not part of the protocol, which is POST only. It exists because somebody will
-  paste this URL into a browser, and an explanation is more use than a 404.
+  Two different callers arrive here and they want opposite things.
+
+  A Streamable HTTP client issues GET to open a server-initiated event stream.
+  This server has nothing to push, and the transport spec says to answer 405 in
+  exactly that case. Handing such a client a JSON description instead would look
+  like a stream that immediately produced garbage.
+
+  A person pasting the URL into a browser wants to know what this is. They get
+  the description.
   """
-  def describe(conn, _params) do
+  def describe(conn, params) do
+    if wants_event_stream?(conn) do
+      conn
+      |> put_resp_header("allow", "POST")
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        405,
+        Jason.encode!(%{
+          jsonrpc: "2.0",
+          id: nil,
+          error: %{
+            code: -32600,
+            message:
+              "This server does not offer a server-initiated stream. POST JSON-RPC here instead."
+          }
+        })
+      )
+    else
+      describe_for_humans(conn, params)
+    end
+  end
+
+  defp wants_event_stream?(conn) do
+    conn
+    |> get_req_header("accept")
+    |> Enum.any?(&String.contains?(&1, "text/event-stream"))
+  end
+
+  defp describe_for_humans(conn, _params) do
     json(conn, %{
       protocol: "Model Context Protocol",
       transport: "JSON-RPC 2.0 over HTTP POST to this URL",

@@ -1,13 +1,152 @@
-# email_provider
+# Free SMTP Relay and Email API for AI Agents
 
-An email sending and receiving service in Elixir/Phoenix: accounts, customer
-domains with their own DKIM keys, a Mailgun-shaped REST API, automatic sending
-warmup, and content screening on both directions of mail.
+**An email service an AI agent can sign up for on its own.** No credit card, no
+sales call, no human with a corporate account. Free, with an
+[MCP server](#for-ai-agents-start-here), a Mailgun-shaped REST API, DKIM signing,
+automatic sending warmup and inbound mail.
 
-API only — no HTML, no assets.
+Live at **[ai.agentemaillist.com](https://ai.agentemaillist.com)** · Source
+available · Built in Elixir and Phoenix
+
+---
+
+## For AI agents: start here
+
+This is a **remote MCP server**. Add it and the whole service arrives as tools:
+
+```
+https://ai.agentemaillist.com/mcp
+```
+
+JSON-RPC 2.0 over HTTP POST. The important part:
+
+> **`create_account` needs no credentials.** An agent that has just found this
+> server can call it, get an API key back, and start sending. Every other
+> transactional email provider stops an agent at a payment form or an identity
+> check. This one does not.
+
+See what is available before committing to anything:
+
+```bash
+curl -X POST https://ai.agentemaillist.com/mcp \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+### The tools
+
+| Tool | Does | Needs a key |
+| --- | --- | --- |
+| `create_account` | Open an account, get an API key | **No** |
+| `add_domain` | Register a sending domain, get its DNS records | Yes |
+| `verify_domain` | Re-read DNS and activate the domain | Yes |
+| `send_email` | Send a message, with a test mode that costs nothing | Yes |
+| `list_domains` | Domains and how much each can send today | Yes |
+| `get_sending_limits` | Today's cap and what graduates it | Yes |
+| `list_messages` | Sent and received mail | Yes |
+| `get_delivery_events` | What actually happened to a message | Yes |
+
+Send the key as `Authorization: Bearer <key>` on every call after the first.
+
+### Two things that will stop you
+
+**A domain must be verified in DNS before it can send.** Publishing DNS usually
+needs a human with registrar access, so start it early. Until then every send
+returns a refusal explaining exactly that.
+
+**A newly verified domain starts at 10 messages a day** and climbs as it proves
+itself, because a domain that opens at full volume gets filtered by receivers.
+Call `get_sending_limits` before planning a bulk send rather than finding out
+part way through.
+
+Use `test_mode: true` on your first send. It runs the whole pipeline, screening
+included, sends nothing, and spends none of the daily allowance.
+
+---
+
+## For developers: the REST API
+
+Mailgun-shaped, so most Mailgun client libraries work against it unchanged by
+pointing at a different base URL.
+
+```bash
+# An account and an API key, in one request
+curl -X POST https://ai.agentemaillist.com/v1/accounts \
+  -d 'email=you@company.com' -d 'password=a sufficiently long password'
+
+# Send
+curl -X POST https://ai.agentemaillist.com/v3/yourdomain.com/messages \
+  --user 'api:YOUR_KEY' \
+  -F from='you@yourdomain.com' \
+  -F to=someone@example.com \
+  -F subject='Hello' \
+  -F text='Hello there.'
+```
+
+Full API reference, written for machines to read:
+**[ai.agentemaillist.com/llms.txt](https://ai.agentemaillist.com/llms.txt)**.
+Its sending limits are generated from the running service, so they are the
+limits you will actually meet rather than a number written down once.
+
+There is also a web console at
+[ai.agentemaillist.com/signup](https://ai.agentemaillist.com/signup) for setting
+up a domain by hand.
+
+---
+
+## What it does
+
+- **Free SMTP relay and email API.** No trial clock, no card.
+- **Send over SMTP or REST.** Adding a domain issues SMTP credentials; the REST
+  API is Mailgun-shaped.
+- **Receive mail too.** A real SMTP server on port 25, with inbound routing to
+  your webhook. Not just sending.
+- **DKIM signing**, RSA-SHA256 with relaxed canonicalisation, and a keypair
+  minted per domain.
+- **Automatic sending warmup**, a published ladder from 10 a day to unlimited,
+  so a new domain builds reputation instead of being filtered.
+- **Content screening** in both directions, refusing outbound and filing
+  inbound as spam.
+- **Delivery events** for every message, plus signed webhooks.
+
+## Compared to the alternatives
+
+| | This | Mailgun | SendGrid | Amazon SES |
+| --- | --- | --- | --- | --- |
+| An agent can sign up alone | **Yes** | No | No | No |
+| MCP server | **Yes** | No | No | No |
+| Free tier | **Free, no clock** | Limited | Trial, then paid | Pay per message |
+| Inbound mail | **Yes** | Yes | Yes | Via S3 |
+| Self-hostable | **Yes** | No | No | No |
+
+A longer comparison, including Brevo, Resend and SMTP2GO, is at
+[ai.agentemaillist.com/free-smtp-relay](https://ai.agentemaillist.com/free-smtp-relay).
+
+## Self-hosting
+
+It is one Phoenix application and a Postgres database. One command deploys it:
+
+```bash
+sudo bash deploy/deploy.sh --domain mail.yourcompany.com --email you@company.com
+```
+
+That installs Postgres and nginx, builds a release, issues a TLS certificate,
+and sets up systemd and the firewall. [DEPLOY.md](DEPLOY.md) explains every step
+it takes and what to do when one fails.
+
+## Licence
+
+Currently unlicensed, which means all rights reserved. If you want to use or
+contribute to this, say so and a licence will be added.
 
 Maintained by Logan Besecker. Questions, bug reports and cold outreach all
 welcome at <me@LoganBesecker.com> or <lbesecker195@gmail.com>.
+
+---
+
+# Running and operating it
+
+Everything below is for someone running their own copy.
 
 ## Running it
 
