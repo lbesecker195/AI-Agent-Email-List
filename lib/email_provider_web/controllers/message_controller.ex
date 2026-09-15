@@ -83,6 +83,9 @@ defmodule EmailProviderWeb.MessageController do
   defp status_for(:domain_not_verified), do: :forbidden
   defp status_for(:all_recipients_suppressed), do: :bad_request
   defp status_for(:rate_limited), do: :too_many_requests
+  # 429 rather than 403: it lifts on its own as the refusals age out, so the
+  # right thing for a client to do is wait, not to change the request.
+  defp status_for(:sender_throttled), do: :too_many_requests
 
   defp error_body(:bad_request, reason) when is_binary(reason), do: %{message: reason}
 

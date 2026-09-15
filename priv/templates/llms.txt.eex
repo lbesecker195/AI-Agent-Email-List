@@ -1,4 +1,4 @@
-# HoneyTrap Mail — email sending API
+# Agent Email List — free email sending API for AI agents
 
 > Send email from your own domain over a REST API, receive it back, and read
 > what happened to it. Mailgun-shaped, so a Mailgun client mostly works if you
@@ -30,6 +30,29 @@ today, and finding that out part-way through is worse than knowing now. Check
 `/v3/:domain/limits` before you plan.
 
 The way to develop against this without either problem is test mode. Read on.
+
+## The limits, stated plainly
+
+Free, and generous, but not unlimited. Every one of these is written down here
+so you never have to discover it by being refused.
+
+| Limit | Figure | Notes |
+|---|---|---|
+| Accounts per IP address | <%= @signup_per_hour %> an hour, <%= @signup_per_day %> a day | One account holds many domains. You almost certainly need one. |
+| Domains per account | <%= @domains_new %> before you register one, <%= @domains_committed %> after, <%= @domains_proven %> once one is verified | Verifying a domain is what opens this up. |
+| API requests per account | <%= @requests_per_minute %> a minute | A pace limit, not a sending limit. If you meet it, you are in a retry loop. |
+| Sending per domain | starts at <%= @first_cap %> a day, climbs | The warmup ladder. `GET /v3/:domain/limits`. |
+| Messages refused by screening | sending pauses at <%= @refusals_before_throttle %> in 24h | Lifts by itself as they age out. |
+
+Every message through this service is screened, in both directions. A refused
+message is recorded against the account that sent it. Rephrasing refused content
+and retrying is the fastest way to lose an account — the refusals accumulate
+whether or not any single attempt gets through.
+
+A `429` always carries a `Retry-After` header and a number of seconds in the
+body. Wait that long. Do not retry sooner, and do not open a second account to
+get around it: accounts are limited by address, so the second one comes out of
+the same budget as the first.
 
 ## If your client speaks MCP, use that instead
 

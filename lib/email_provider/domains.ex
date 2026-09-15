@@ -38,8 +38,21 @@ defmodule EmailProvider.Domains do
     Repo.all(from d in Domain, where: d.user_id == ^uid, order_by: [asc: d.name])
   end
 
-  @doc "Register a domain and mint its DKIM keypair."
+  @doc """
+  Register a domain and mint its DKIM keypair.
+
+  Refuses once the account is at the limit for its trust tier. The limit rises
+  sharply once a domain is verified, because controlling real DNS is the first
+  thing in this flow a bulk abuser cannot fake cheaply.
+  """
   def create_domain(%User{} = user, attrs) do
+    case EmailProvider.Reputation.can_add_domain?(user) do
+      :ok -> do_create_domain(user, attrs)
+      {:error, message} -> {:error, :domain_limit, message}
+    end
+  end
+
+  defp do_create_domain(%User{} = user, attrs) do
     {private_pem, public_b64} = generate_dkim_keypair()
 
     selector =

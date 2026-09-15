@@ -16,7 +16,10 @@ defmodule EmailProviderWeb.MCPController do
 
   @doc "POST /mcp"
   def rpc(conn, _params) do
-    context = %{user: current_user(conn)}
+    context = %{
+      user: current_user(conn),
+      client_ip: EmailProviderWeb.Plugs.SignupLimit.client_ip(conn)
+    }
 
     case conn.body_params do
       # A batch. Notifications in it produce nothing, so a batch of only

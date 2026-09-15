@@ -55,6 +55,7 @@ defmodule EmailProvider.Mail do
     with {:ok, params} <- parse(raw_params),
          :ok <- check_sendable(domain),
          :ok <- check_from_domain(params, domain),
+         :ok <- check_reputation(user),
          {:ok, params} <- apply_template(domain, params),
          {:ok, params, verdict} <- screen_outbound(user, domain, params),
          {:ok, params, suppressed} <- drop_suppressed(domain, params),
@@ -140,7 +141,16 @@ defmodule EmailProvider.Mail do
     end
   end
 
-  defp screen_outbound(_user, _domain, %Params{} = params) do
+  # An account that keeps being refused is narrowed and eventually suspended.
+  # Separate from the warmup ladder, which caps a domain rather than a sender.
+  defp check_reputation(user) do
+    case EmailProvider.Reputation.check_sending(user) do
+      :ok -> :ok
+      {:error, message} -> {:error, :sender_throttled, %{message: message}}
+    end
+  end
+
+  defp screen_outbound(user, domain, %Params{} = params) do
     verdict =
       [params.subject, params.text, strip_html(params.html)]
       |> Moderation.check()
@@ -150,12 +160,54 @@ defmodule EmailProvider.Mail do
         {:ok, params, verdict}
 
       {:block, verdict} ->
+        record_refusal(user, domain, params, verdict)
+
         {:error, :content_rejected,
          %{
            message: "message content was refused by content screening",
            categories: verdict.categories,
-           screened: verdict.screened
+           screened: verdict.screened,
+           verdict: verdict
          }}
+    end
+  end
+
+  # A refused message is still recorded, with status "rejected" and never
+  # queued. Two things depend on it: the operator dashboard could not previously
+  # count refusals at all, and repeated refusals are the cheapest abuse signal
+  # this service has, because screening is already being paid for.
+  defp record_refusal(user, domain, %Params{} = params, verdict) do
+    %Message{}
+    |> Message.changeset(%{
+      user_id: user.id,
+      domain_id: domain.id,
+      direction: "outbound",
+      storage_key: storage_key(),
+      sender: params.from,
+      recipients: params.to,
+      cc: params.cc,
+      bcc: params.bcc,
+      subject: params.subject,
+      body_text: params.text,
+      body_html: params.html,
+      tags: params.tags,
+      status: "rejected",
+      moderation_checked_at: verdict.checked_at,
+      moderation_flagged: verdict.flagged,
+      moderation_categories: verdict.categories,
+      moderation_scores: verdict.scores,
+      moderation_action: "blocked"
+    })
+    |> Repo.insert()
+    |> case do
+      {:ok, message} ->
+        record_event(message, "rejected", %{
+          categories: verdict.categories,
+          reason: "content screening"
+        })
+
+      {:error, _changeset} ->
+        :ok
     end
   end
 

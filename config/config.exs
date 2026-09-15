@@ -121,6 +121,40 @@ config :email_provider, EmailProvider.Domains,
   spf_host: "ai.agentemaillist.com",
   mx_host: "ai.agentemaillist.com"
 
+# -- Limits ------------------------------------------------------------------
+#
+# The shape of all of these: generous enough that nobody building something real
+# ever meets them, tight enough that the cheap version of abuse does.
+#
+# What actually stops a spammer here is not any single number below. It is that
+# sending requires a verified domain, so mail cannot leave this service until
+# somebody has published DNS they control; that every outbound message is
+# screened; and that refusals are now counted against the account that caused
+# them. These are the limits on everything that happens before that point.
+
+# How many accounts one address may open. The hourly figure is loose on purpose
+# — a developer wiring this up will make several while getting it working, and
+# an agent that failed and retried should not be locked out. The daily one is
+# the limit that means anything.
+config :email_provider, EmailProviderWeb.Plugs.SignupLimit, per_hour: 5, per_day: 20
+
+# A pace limit, not a volume limit: how much an account may *send* is settled
+# elsewhere. 600/min is roughly ten calls a second, far above any real use and
+# far below what it takes to hurt the box.
+config :email_provider, EmailProviderWeb.Plugs.ApiAuth,
+  requests_per_minute: 600,
+  failures_per_minute: 30
+
+# Domains per account, by tier, and how much screening an account may fail
+# before it stops sending. A verified domain is the expensive thing to fake, so
+# it is what the generosity is attached to.
+config :email_provider, EmailProvider.Reputation,
+  domains_new: 3,
+  domains_committed: 10,
+  domains_proven: 50,
+  refusals_before_throttle: 8,
+  refusals_before_suspension: 25
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

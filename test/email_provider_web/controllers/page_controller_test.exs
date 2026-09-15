@@ -81,6 +81,31 @@ defmodule EmailProviderWeb.PageControllerTest do
       assert body =~ "curl -X POST http://www.example.com/v1/accounts"
     end
 
+    test "the limits it publishes are the limits the service enforces", %{conn: conn} do
+      Application.put_env(:email_provider, EmailProviderWeb.Plugs.SignupLimit,
+        per_hour: 7,
+        per_day: 41
+      )
+
+      Application.put_env(:email_provider, EmailProvider.Reputation, domains_proven: 77)
+
+      on_exit(fn ->
+        Application.put_env(:email_provider, EmailProviderWeb.Plugs.SignupLimit,
+          per_hour: 1_000_000,
+          per_day: 1_000_000
+        )
+
+        Application.delete_env(:email_provider, EmailProvider.Reputation)
+      end)
+
+      body = conn |> get("/llms.txt") |> response(200)
+
+      # Same reason as the ladder below: an agent that plans against a figure
+      # in this file must meet that figure.
+      assert body =~ "7 an hour, 41 a day"
+      assert body =~ "77 once one is verified"
+    end
+
     test "the ladder it publishes is the ladder the service enforces", %{conn: conn} do
       body = conn |> get("/llms.txt") |> response(200)
 

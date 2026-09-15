@@ -257,6 +257,32 @@ defmodule EmailProviderWeb.MCPControllerTest do
     end
   end
 
+  describe "limits an agent can read before it hits them" do
+    setup do
+      user = user_fixture()
+      {_key, plaintext} = api_key_fixture(user)
+      %{user: user, key: plaintext}
+    end
+
+    test "get_sending_limits answers without a domain", %{conn: conn, key: key} do
+      {error?, text} = call_tool(conn, "get_sending_limits", %{}, key)
+
+      refute error?
+      assert text =~ "Account: new"
+      assert text =~ "3 domains"
+    end
+
+    test "it reports the domain allowance and the account together",
+         %{conn: conn, key: key, user: user} do
+      domain = domain_fixture(user)
+      {error?, text} = call_tool(conn, "get_sending_limits", %{"domain" => domain.name}, key)
+
+      refute error?
+      assert text =~ domain.name
+      assert text =~ "Account:"
+    end
+  end
+
   describe "protocol errors" do
     test "an unknown method is -32601", %{conn: conn} do
       error = conn |> rpc("no/such/method") |> json_response(200) |> Map.fetch!("error")

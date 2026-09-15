@@ -67,3 +67,14 @@ config :email_provider, EmailProvider.Profiles,
 config :email_provider, EmailProvider.Profiles.Generator, adapter: :structured
 
 config :email_provider, EmailProvider.Enrichment.CSuiteFinder, enabled: false
+
+# The limiter's table is global while tests are not, so the address-keyed limits
+# are lifted here rather than made to interleave. The tests that exercise them
+# set their own figures and reset the table themselves.
+config :email_provider, EmailProviderWeb.Plugs.SignupLimit,
+  per_hour: 1_000_000,
+  per_day: 1_000_000
+
+config :email_provider, EmailProviderWeb.Plugs.ApiAuth,
+  requests_per_minute: 1_000_000,
+  failures_per_minute: 1_000_000

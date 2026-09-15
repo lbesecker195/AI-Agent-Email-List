@@ -106,7 +106,7 @@ defmodule EmailProviderWeb.MCP do
         )
 
       true ->
-        case Tools.call(name, args, context.user) do
+        case Tools.call(name, args, context) do
           {:ok, text} -> tool_result(id, text, false)
           {:error, text} -> tool_result(id, text, true)
         end

@@ -22,7 +22,7 @@ defmodule EmailProviderWeb.MCP.Tools do
   instead of three and a failure.
   """
 
-  alias EmailProvider.{Accounts, Domains, Mail, Warmup}
+  alias EmailProvider.{Accounts, Domains, Mail, RateLimit, Reputation, Warmup}
 
   @doc "Every tool, in the shape `tools/list` returns."
   def list do
@@ -47,10 +47,10 @@ defmodule EmailProviderWeb.MCP.Tools do
   content; an error is not a protocol failure, it is a result the agent should
   read and act on.
   """
-  def call(name, args, user) do
+  def call(name, args, context) do
     case Enum.find(catalog(), &(&1.name == name)) do
       nil -> {:error, "No tool named #{name}. Call tools/list to see what exists."}
-      tool -> tool.run.(args || %{}, user)
+      tool -> tool.run.(args || %{}, context)
     end
   end
 
@@ -152,13 +152,19 @@ defmodule EmailProviderWeb.MCP.Tools do
         name: "get_sending_limits",
         public: false,
         description:
-          "How much this domain may send today and what graduates it to the next rung. " <>
-            "New domains start at a low daily cap and climb as they prove themselves, so " <>
-            "check this before planning a bulk send rather than discovering it part-way.",
+          "How much this domain may send today and what graduates it to the next rung, plus " <>
+            "this account's standing: how many domains it may hold and whether sending is " <>
+            "paused. New domains start at a low daily cap and climb as they prove themselves, " <>
+            "so check this before planning a bulk send rather than discovering it part-way. " <>
+            "Call it with no domain for the account-level answer alone.",
         schema: %{
           type: "object",
-          properties: %{domain: %{type: "string"}},
-          required: ["domain"]
+          properties: %{
+            domain: %{
+              type: "string",
+              description: "Optional. Omit for account limits without a domain's allowance."
+            }
+          }
         },
         run: &get_limits/2
       },
@@ -207,9 +213,10 @@ defmodule EmailProviderWeb.MCP.Tools do
 
   # -- handlers ------------------------------------------------------------
 
-  defp create_account(args, _user) do
+  defp create_account(args, context) do
     with {:ok, email} <- required(args, "email"),
-         {:ok, password} <- required(args, "password") do
+         {:ok, password} <- required(args, "password"),
+         :ok <- signup_allowed(context) do
       case Accounts.register_user(%{
              email: email,
              name: Map.get(args, "name"),
@@ -235,7 +242,7 @@ defmodule EmailProviderWeb.MCP.Tools do
     end
   end
 
-  defp list_domains(_args, user) do
+  defp list_domains(_args, %{user: user}) do
     case Domains.list_domains(user) do
       [] ->
         {:ok, "No domains yet. Call add_domain to register one."}
@@ -255,7 +262,7 @@ defmodule EmailProviderWeb.MCP.Tools do
     end
   end
 
-  defp add_domain(args, user) do
+  defp add_domain(args, %{user: user}) do
     with {:ok, name} <- required(args, "name") do
       case Domains.create_domain(user, %{"name" => name}) do
         {:ok, domain, smtp_password} ->
@@ -278,13 +285,16 @@ defmodule EmailProviderWeb.MCP.Tools do
            SMTP password for this domain, shown once: #{smtp_password}
            """}
 
+        {:error, :domain_limit, message} ->
+          {:error, message}
+
         {:error, changeset} ->
           {:error, "Could not add that domain: " <> changeset_errors(changeset)}
       end
     end
   end
 
-  defp verify_domain(args, user) do
+  defp verify_domain(args, %{user: user}) do
     with {:ok, name} <- required(args, "name"),
          {:ok, domain} <- fetch_domain(user, name) do
       {:ok, checked} = Domains.verify_domain(domain)
@@ -307,7 +317,7 @@ defmodule EmailProviderWeb.MCP.Tools do
     end
   end
 
-  defp send_email(args, user) do
+  defp send_email(args, %{user: user}) do
     with {:ok, domain_name} <- required(args, "domain"),
          {:ok, domain} <- fetch_domain(user, domain_name) do
       params =
@@ -340,22 +350,39 @@ defmodule EmailProviderWeb.MCP.Tools do
     end
   end
 
-  defp get_limits(args, user) do
-    with {:ok, name} <- required(args, "domain"),
-         {:ok, domain} <- fetch_domain(user, name) do
-      limits = Warmup.status(domain)
+  defp get_limits(args, %{user: user}) do
+    standing = Reputation.summary(user)
 
-      {:ok,
-       """
-       #{domain.name}: rung #{limits.stage} of #{limits.stage_count}, #{limits.daily_limit} a day.
-       Sent today: #{limits.sent_today}. Remaining: #{limits.remaining_today}.
-       Graduates #{limits.graduates_when}.
-       The allowance resets at #{limits.resets_at}.
-       """}
+    account = """
+
+    Account: #{standing.tier} — up to #{standing.domain_limit} domains\
+    #{if standing.refusals_last_24h > 0, do: ", #{standing.refusals_last_24h} messages refused by screening in the last 24h", else: ""}.\
+    #{unless standing.sending_allowed, do: " Sending is currently paused on this account.", else: ""}
+    """
+
+    case Map.get(args, "domain") do
+      # Asking about no domain in particular is a fair question, and answering
+      # it saves an agent a round trip through a refusal.
+      nil ->
+        {:ok, String.trim(account) <> "\n\nPass a domain name for its daily sending allowance."}
+
+      name ->
+        with {:ok, domain} <- fetch_domain(user, name) do
+          limits = Warmup.status(domain)
+
+          {:ok,
+           """
+           #{domain.name}: rung #{limits.stage} of #{limits.stage_count}, #{limits.daily_limit} a day.
+           Sent today: #{limits.sent_today}. Remaining: #{limits.remaining_today}.
+           Graduates #{limits.graduates_when}.
+           The allowance resets at #{limits.resets_at}.
+           #{String.trim(account)}
+           """}
+        end
     end
   end
 
-  defp list_messages(args, user) do
+  defp list_messages(args, %{user: user}) do
     with {:ok, name} <- required(args, "domain"),
          {:ok, domain} <- fetch_domain(user, name) do
       messages =
@@ -381,7 +408,7 @@ defmodule EmailProviderWeb.MCP.Tools do
     end
   end
 
-  defp get_events(args, user) do
+  defp get_events(args, %{user: user}) do
     with {:ok, name} <- required(args, "domain"),
          {:ok, domain} <- fetch_domain(user, name) do
       events =
@@ -404,6 +431,24 @@ defmodule EmailProviderWeb.MCP.Tools do
   end
 
   # -- shared --------------------------------------------------------------
+
+  # Shares its counters with the REST signup deliberately: these are two doors
+  # into one room, and an abuser who found both should not get twice as much.
+  defp signup_allowed(%{client_ip: ip}) when is_binary(ip) do
+    config = Application.get_env(:email_provider, EmailProviderWeb.Plugs.SignupLimit, [])
+
+    with :ok <- RateLimit.hit({:signup_hour, ip}, Keyword.get(config, :per_hour, 5), 3_600),
+         :ok <- RateLimit.hit({:signup_day, ip}, Keyword.get(config, :per_day, 20), 86_400) do
+      :ok
+    else
+      {:error, retry_after} ->
+        {:error,
+         "Too many accounts have been created from this address. Wait #{retry_after} seconds. " <>
+           "One account can hold several domains, so you probably do not need another."}
+    end
+  end
+
+  defp signup_allowed(_context), do: :ok
 
   defp required(args, key) do
     case Map.get(args, key) do
@@ -444,6 +489,8 @@ defmodule EmailProviderWeb.MCP.Tools do
     do:
       "Content screening refused this message (#{Enum.join(details.categories, ", ")}). " <>
         "This is permanent; do not rephrase and retry in a loop."
+
+  defp explain(:sender_throttled, details), do: details.message
 
   defp explain(:all_recipients_suppressed, _details),
     do: "Every recipient is on this domain's suppression list, so nothing was sent."

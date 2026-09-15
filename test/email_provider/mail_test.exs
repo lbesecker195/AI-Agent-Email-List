@@ -141,7 +141,12 @@ defmodule EmailProvider.MailTest do
 
       assert "harassment/threatening" in details.categories
       assert Warmup.sent_today(domain) == 0
-      assert Repo.aggregate(Message, :count) == 0
+
+      # Recorded, but never queued: a refusal costs the account nothing in
+      # allowance and everything in standing.
+      assert [message] = Repo.all(Message)
+      assert message.status == "rejected"
+      refute message.sent_at
     end
 
     test "lets clean content through and records that it was screened", %{
@@ -221,6 +226,43 @@ defmodule EmailProvider.MailTest do
       assert {:ok, [message]} = Mail.send_message(user, domain, send_params(domain))
       # Recorded as unscreened so it can be found later, not quietly marked clean.
       assert message.moderation_action == "not_screened"
+    end
+
+    test "a refused message is recorded rather than vanishing", %{user: user, domain: domain} do
+      stub_moderation(flagged: true, categories: ["violence"])
+
+      assert {:error, :content_rejected, _details} =
+               Mail.send_message(user, domain, send_params(domain))
+
+      # Without this the operator cannot count refusals, and repeated abuse
+      # looks identical to an account that has never been refused.
+      assert [message] = Repo.all(Message)
+      assert message.status == "rejected"
+      assert message.moderation_action == "blocked"
+      assert message.moderation_flagged
+      assert EmailProvider.Reputation.recent_refusals(user) == 1
+    end
+
+    test "an account that keeps being refused stops being able to send",
+         %{user: user, domain: domain} do
+      stub_moderation(flagged: true, categories: ["violence"])
+
+      # Eight refusals is the throttle. Each of these is refused for content.
+      for _ <- 1..8 do
+        assert {:error, :content_rejected, _} =
+                 Mail.send_message(user, domain, send_params(domain))
+      end
+
+      # The ninth is refused before screening even runs: the sender, not the
+      # content, is now the problem.
+      assert {:error, :sender_throttled, details} =
+               Mail.send_message(user, domain, send_params(domain))
+
+      assert details.message =~ "paused"
+
+      # And a fresh account is untouched by any of it.
+      other = user_fixture()
+      assert EmailProvider.Reputation.check_sending(other) == :ok
     end
 
     test "it can be told to fail closed instead", %{user: user, domain: domain} do

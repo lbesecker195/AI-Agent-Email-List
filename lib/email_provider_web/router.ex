@@ -69,10 +69,25 @@ defmodule EmailProviderWeb.Router do
 
   # -- accounts ------------------------------------------------------------
 
+  # Signup is the one endpoint that hands out credentials to anyone, so it is
+  # the one that has to be limited by address rather than by account.
+  pipeline :signup do
+    plug EmailProviderWeb.Plugs.SignupLimit
+  end
+
+  pipeline :signup_html do
+    plug EmailProviderWeb.Plugs.SignupLimit, on_limit: :html
+  end
+
+  scope "/v1", EmailProviderWeb do
+    pipe_through [:api, :signup]
+
+    post "/accounts", AccountController, :create
+  end
+
   scope "/v1", EmailProviderWeb do
     pipe_through :api
 
-    post "/accounts", AccountController, :create
     post "/accounts/login", AccountController, :login
   end
 
@@ -209,10 +224,15 @@ defmodule EmailProviderWeb.Router do
   # -- the browser console -------------------------------------------------
 
   scope "/", EmailProviderWeb do
+    pipe_through [:browser, :signup_html]
+
+    post "/signup", RegistrationController, :create
+  end
+
+  scope "/", EmailProviderWeb do
     pipe_through :browser
 
     get "/signup", RegistrationController, :new
-    post "/signup", RegistrationController, :create
     get "/login", SessionController, :new
     post "/login", SessionController, :create
     post "/logout", SessionController, :delete

@@ -40,6 +40,9 @@ defmodule EmailProviderWeb.ConsoleController do
         )
         |> redirect(to: "/domains/#{domain.name}")
 
+      {:error, :domain_limit, message} ->
+        conn |> put_flash(:error, message) |> redirect(to: "/domains")
+
       {:error, changeset} ->
         conn
         |> put_flash(:error, first_error(changeset, "That domain could not be added."))

@@ -15,6 +15,9 @@ defmodule EmailProvider.Application do
       # Webhook callbacks and route forwards run here, so a customer's slow
       # endpoint cannot hold up a send.
       {Task.Supervisor, name: EmailProvider.TaskSupervisor},
+      # Holds the short-window counters the signup and API limits are read from.
+      # Started before the endpoint, because the first request already reads it.
+      EmailProvider.RateLimit,
       # Polls the messages table and dispatches what is due.
       EmailProvider.Delivery.Queue,
       # Receives mail. Listeners that cannot bind are logged and skipped, so a

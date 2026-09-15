@@ -34,6 +34,9 @@ defmodule EmailProviderWeb.DomainController do
             "Publish the records in sending_dns_records, then PUT /v3/domains/#{domain.name}/verify"
         })
 
+      {:error, :domain_limit, message} ->
+        conn |> put_status(:forbidden) |> json(%{message: message})
+
       {:error, changeset} ->
         conn |> put_status(:bad_request) |> json(%{errors: Views.changeset_errors(changeset)})
     end

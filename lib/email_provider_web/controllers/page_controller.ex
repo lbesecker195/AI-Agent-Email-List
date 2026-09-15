@@ -211,6 +211,25 @@ defmodule EmailProviderWeb.PageController do
       mx_host: Domains.mx_host(),
       profile_words: EmailProvider.Profiles.target_words()
     }
+    |> Map.merge(limits())
+  end
+
+  # Read from the running configuration rather than typed into the template, so
+  # the figures an agent plans against are the ones it will actually meet.
+  defp limits do
+    signup = Application.get_env(:email_provider, EmailProviderWeb.Plugs.SignupLimit, [])
+    api = Application.get_env(:email_provider, EmailProviderWeb.Plugs.ApiAuth, [])
+    reputation = Application.get_env(:email_provider, EmailProvider.Reputation, [])
+
+    %{
+      signup_per_hour: Keyword.get(signup, :per_hour, 5),
+      signup_per_day: Keyword.get(signup, :per_day, 20),
+      requests_per_minute: Keyword.get(api, :requests_per_minute, 600),
+      domains_new: Keyword.get(reputation, :domains_new, 3),
+      domains_committed: Keyword.get(reputation, :domains_committed, 10),
+      domains_proven: Keyword.get(reputation, :domains_proven, 50),
+      refusals_before_throttle: Keyword.get(reputation, :refusals_before_throttle, 8)
+    }
   end
 
   defp base_url(conn) do

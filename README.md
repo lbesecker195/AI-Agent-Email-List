@@ -62,6 +62,20 @@ part way through.
 Use `test_mode: true` on your first send. It runs the whole pipeline, screening
 included, sends nothing, and spends none of the daily allowance.
 
+### The limits, so you never meet one by surprise
+
+| Limit | Figure |
+| --- | --- |
+| Accounts per IP address | 5 an hour, 20 a day |
+| Domains per account | 3, rising to 10 once you register one and 50 once one is verified |
+| API requests per account | 600 a minute — a pace limit, not a sending limit |
+| Sending per domain | starts at 10 a day and climbs the warmup ladder |
+| Screening refusals | sending pauses at 8 in 24 hours, and lifts by itself |
+
+`get_sending_limits` reports all of these live, with no domain argument needed.
+Every `429` carries a `Retry-After`. Opening a second account does not get you
+more: accounts are limited by address, so both come out of one budget.
+
 ---
 
 ## For developers: the REST API
@@ -108,6 +122,9 @@ up a domain by hand.
 - **Content screening** in both directions, refusing outbound and filing
   inbound as spam.
 - **Delivery events** for every message, plus signed webhooks.
+- **Limits that open as you prove yourself**, rather than a flat cap: verifying
+  a domain is what buys headroom, because it is the one thing a throwaway
+  account cannot fake at scale.
 
 ## Compared to the alternatives
 
