@@ -218,12 +218,24 @@ defmodule EmailProvider.AnalyticsTest do
       assert length(Enum.uniq(visitors)) == 2
     end
 
-    test "the id is not the account id, and cannot be read back as one", %{user: user} do
-      visitor = EmailProvider.Analytics.visitor_id(user)
+    test "the id is the account id, so a report joins back to the account", %{user: user} do
+      # Deliberately joinable: a count of unique callers that cannot be resolved
+      # to a caller answers half the question.
+      assert EmailProvider.Analytics.visitor_id(user) == user.id
+    end
 
-      refute visitor == user.id
-      refute visitor =~ user.id
-      assert String.length(visitor) == 16
+    test "nothing about the account travels with its id", %{conn: conn, user: user, key: key} do
+      domain = domain_fixture(user)
+
+      pings =
+        capture(fn ->
+          mcp(conn, "tools/call", %{"name" => "list_domains", "arguments" => %{}}, key)
+        end)
+
+      for ping <- pings, {_k, v} <- ping, is_binary(v) do
+        refute v =~ user.email
+        refute v =~ domain.name
+      end
     end
 
     test "a caller with no account is not given an invented identity", %{conn: conn} do

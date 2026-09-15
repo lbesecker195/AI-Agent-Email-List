@@ -74,21 +74,23 @@ defmodule EmailProvider.Analytics do
   @doc """
   A stable id for one account, or nil.
 
-  This is what turns "22 sessions" into "how many distinct callers", and the
-  account id is the honest answer to that: it is something we already have,
-  it identifies a customer rather than a person, and it is the unit adoption is
-  actually measured in.
+  The account's own id, which is what the service means by "use something you
+  already have". It turns "22 sessions" into "which callers, coming back", and
+  because it is the same value the accounts table is keyed on, a report can be
+  joined back to the account it describes — the difference between knowing how
+  many agents are using this and knowing which one is hammering it.
 
-  Hashed with the deployment's secret so it cannot be turned back into an
-  account id by anyone holding the reports, and so the same account reported by
-  two different deployments does not correlate.
+  A UUID and nothing else. It is an opaque internal key, not a name or an
+  address: it identifies an account to us, and to anyone else it is sixteen
+  random bytes. The addresses, domains and mail attached to that account never
+  go anywhere near a ping.
 
   Callers with no account — an agent that has found the server but not signed up
   — get `nil` rather than a fingerprint. They are genuinely unidentified, and
   inventing an identifier for them would be tracking a stranger rather than
   counting a customer.
   """
-  def visitor_id(%{id: id}) when is_binary(id), do: digest("visitor", id)
+  def visitor_id(%{id: id}) when is_binary(id), do: id
   def visitor_id(_), do: nil
 
   @doc """
