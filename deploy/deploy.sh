@@ -438,10 +438,21 @@ if [[ $DO_SSL -eq 1 ]]; then
   # loopback, which is why the health check above still answered over plain HTTP.
 
   step "Verifying over HTTPS"
-  if curl -sf --max-time 10 "https://$DOMAIN/health" >/dev/null; then
+  # Retried rather than asked once: the service has just restarted, and the
+  # first request after nginx reloads can arrive before the release has
+  # finished binding. Reporting that as a failed deploy sends somebody to read
+  # logs of a service that is fine.
+  https_status=000
+  for _ in 1 2 3 4 5 6; do
+    https_status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "https://$DOMAIN/health" || echo 000)
+    [ "$https_status" = "200" ] && break
+    sleep 2
+  done
+
+  if [ "$https_status" = "200" ]; then
     ok "https://$DOMAIN/health answers"
   else
-    warn "https://$DOMAIN/health did not answer; check: journalctl -u $SERVICE -n 50"
+    warn "https://$DOMAIN/health answered $https_status; check: journalctl -u $SERVICE -n 50"
   fi
 else
   step "Verifying over HTTP"
@@ -522,8 +533,10 @@ else
   echo "      SMTP_RELAY=...      a smarthost. No port 25 needed, and it"
   echo "                          delivers far better from a new address."
   echo "      DIRECT_DELIVERY=true  straight to each recipient's MX. Needs"
-  echo "                          outbound port 25, which Vultr blocks by"
-  echo "                          default; open a support ticket first."
+  echo "                          outbound port 25. Contabo leaves it open;"
+  echo "                          Vultr, DigitalOcean and most others block it"
+  echo "                          until you ask. Check before assuming:"
+  echo "                            exec 3<>/dev/tcp/gmail-smtp-in.l.google.com/25"
   echo
   echo "    Set one in $ENV_FILE, then: systemctl restart $SERVICE"
 fi
@@ -539,5 +552,5 @@ fi
 
 bold "  DNS still needed before any customer domain can verify"
 echo "    TXT  $DOMAIN  \"v=spf1 ip4:${my_ip:-YOUR_IP} ~all\""
-echo "    PTR  ${my_ip:-YOUR_IP} -> $DOMAIN   (set in the Vultr panel, not DNS)"
+echo "    PTR  ${my_ip:-YOUR_IP} -> $DOMAIN   (set in the Contabo panel, not DNS)"
 echo
