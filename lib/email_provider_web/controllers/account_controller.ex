@@ -2,6 +2,7 @@ defmodule EmailProviderWeb.AccountController do
   use EmailProviderWeb, :controller
 
   alias EmailProvider.Accounts
+  alias EmailProvider.Analytics
   alias EmailProviderWeb.Views
 
   @doc "POST /v1/accounts — open an account."
@@ -13,6 +14,10 @@ defmodule EmailProviderWeb.AccountController do
          }) do
       {:ok, user} ->
         {:ok, _key, plaintext} = Accounts.create_api_key(user, label: "initial key")
+
+        # Counted alongside the MCP signups so the two routes in are
+        # comparable. The account is not described, only that there is one more.
+        Analytics.report(:account_created, sid: Analytics.random_sid(), transport: "rest")
 
         conn
         |> put_status(:created)

@@ -273,6 +273,7 @@ use a different database, name it in `DATABASE_URL`.
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | Key for the moderation endpoint | none — screening is skipped |
+| `SSA_UID` | SeriouslySimpleAnalytics account id for adoption reporting | unset — nothing is reported |
 | `MODERATION_ENABLED` | Turn screening off entirely | `true` |
 | `MODERATION_ON_ERROR` | `block` to fail closed when screening is unreachable | `allow` |
 | `SMTP_RELAY` | Smarthost for outbound mail | unset — mail is written to `priv/local_mail` |

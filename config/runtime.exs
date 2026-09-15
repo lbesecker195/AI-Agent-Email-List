@@ -91,6 +91,13 @@ if config_env() != :test do
   # which is the right failure mode for a missing environment variable.
   config :email_provider, :admin_token, present.("ADMIN_TOKEN")
 
+  # -- Usage reporting -------------------------------------------------------
+  #
+  # Adoption analytics, off unless an account id is set. Nothing about an
+  # account or its mail is ever reported; see EmailProvider.Analytics for what
+  # is deliberately left out and why.
+  config :email_provider, EmailProvider.Analytics, uid: present.("SSA_UID")
+
   # -- Content screening -----------------------------------------------------
   config :email_provider, EmailProvider.Moderation,
     enabled: System.get_env("MODERATION_ENABLED", "true") == "true",

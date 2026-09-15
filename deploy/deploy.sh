@@ -229,6 +229,10 @@ OPTIONAL_KEYS=""
 [[ -n "${CSUITEFINDER_API_KEY:-}" ]] &&
   OPTIONAL_KEYS="$OPTIONAL_KEYS
 CSUITEFINDER_API_KEY=$CSUITEFINDER_API_KEY"
+# Adoption analytics. Unset means no reporting, which is the right default for
+# anyone self-hosting this: it is our account id, not theirs.
+[[ -n "${SSA_UID:-}" ]] && OPTIONAL_KEYS="$OPTIONAL_KEYS
+SSA_UID=$SSA_UID"
 
 if [[ $ENABLE_MAIL -eq 1 ]]; then
   SMTP_RECEIVE_ENABLED=true

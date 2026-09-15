@@ -3,6 +3,13 @@ defmodule EmailProviderWeb.Router do
 
   alias EmailProviderWeb.Plugs.{ApiAuth, LoadDomain}
 
+  # Usage reporting. In the pipeline rather than the endpoint so it covers the
+  # API and nothing else: the console, the articles and the health check are
+  # not adoption signals and would drown the ones that are.
+  pipeline :analytics do
+    plug EmailProviderWeb.Plugs.Analytics
+  end
+
   pipeline :api do
     plug :accepts, ["json"]
   end
@@ -80,19 +87,19 @@ defmodule EmailProviderWeb.Router do
   end
 
   scope "/v1", EmailProviderWeb do
-    pipe_through [:api, :signup]
+    pipe_through [:analytics, :api, :signup]
 
     post "/accounts", AccountController, :create
   end
 
   scope "/v1", EmailProviderWeb do
-    pipe_through :api
+    pipe_through [:analytics, :api]
 
     post "/accounts/login", AccountController, :login
   end
 
   scope "/v1", EmailProviderWeb do
-    pipe_through [:api, :authed]
+    pipe_through [:analytics, :api, :authed]
 
     get "/profile", ProfileController, :show
     post "/profile/refresh", ProfileController, :refresh
@@ -104,7 +111,7 @@ defmodule EmailProviderWeb.Router do
   end
 
   scope "/v1/inbound", EmailProviderWeb do
-    pipe_through [:api, :domain_scoped]
+    pipe_through [:analytics, :api, :domain_scoped]
 
     post "/:domain", InboundController, :create
     get "/:domain/spam", InboundController, :spam
@@ -113,7 +120,7 @@ defmodule EmailProviderWeb.Router do
   # -- address validation --------------------------------------------------
 
   scope "/v4", EmailProviderWeb do
-    pipe_through [:api, :authed]
+    pipe_through [:analytics, :api, :authed]
 
     get "/address/validate", ValidateController, :validate
   end
@@ -124,14 +131,14 @@ defmodule EmailProviderWeb.Router do
   # captured as a domain name.
 
   scope "/v3/domains", EmailProviderWeb do
-    pipe_through [:api, :authed]
+    pipe_through [:analytics, :api, :authed]
 
     get "/", DomainController, :index
     post "/", DomainController, :create
   end
 
   scope "/v3/domains", EmailProviderWeb do
-    pipe_through [:api, :domain_scoped]
+    pipe_through [:analytics, :api, :domain_scoped]
 
     get "/:domain", DomainController, :show
     put "/:domain", DomainController, :update
@@ -149,7 +156,7 @@ defmodule EmailProviderWeb.Router do
   # -- routes (account-wide, not per domain) -------------------------------
 
   scope "/v3/routes", EmailProviderWeb do
-    pipe_through [:api, :authed]
+    pipe_through [:analytics, :api, :authed]
 
     get "/", RouteController, :index
     post "/", RouteController, :create
@@ -161,7 +168,7 @@ defmodule EmailProviderWeb.Router do
   # -- per-domain sending and reporting ------------------------------------
 
   scope "/v3", EmailProviderWeb do
-    pipe_through [:api, :domain_scoped]
+    pipe_through [:analytics, :api, :domain_scoped]
 
     post "/:domain/messages", MessageController, :create
     post "/:domain/messages.mime", MessageController, :create_mime
@@ -180,7 +187,7 @@ defmodule EmailProviderWeb.Router do
   end
 
   scope "/v3", EmailProviderWeb do
-    pipe_through [:api, :domain_scoped, :bounces]
+    pipe_through [:analytics, :api, :domain_scoped, :bounces]
 
     get "/:domain/bounces", SuppressionController, :index
     post "/:domain/bounces", SuppressionController, :create
@@ -189,7 +196,7 @@ defmodule EmailProviderWeb.Router do
   end
 
   scope "/v3", EmailProviderWeb do
-    pipe_through [:api, :domain_scoped, :unsubscribes]
+    pipe_through [:analytics, :api, :domain_scoped, :unsubscribes]
 
     get "/:domain/unsubscribes", SuppressionController, :index
     post "/:domain/unsubscribes", SuppressionController, :create
@@ -198,7 +205,7 @@ defmodule EmailProviderWeb.Router do
   end
 
   scope "/v3", EmailProviderWeb do
-    pipe_through [:api, :domain_scoped, :complaints]
+    pipe_through [:analytics, :api, :domain_scoped, :complaints]
 
     get "/:domain/complaints", SuppressionController, :index
     post "/:domain/complaints", SuppressionController, :create
@@ -268,6 +275,8 @@ defmodule EmailProviderWeb.Router do
   scope "/", EmailProviderWeb do
     pipe_through :api
 
+    # Deliberately not reported: polled by the deploy script and by monitoring,
+    # so it would be the loudest event and the least informative.
     get "/health", HealthController, :show
   end
 

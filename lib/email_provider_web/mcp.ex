@@ -23,6 +23,7 @@ defmodule EmailProviderWeb.MCP do
 
   require Logger
 
+  alias EmailProvider.Analytics
   alias EmailProviderWeb.MCP.Tools
 
   @supported_versions ["2025-06-18", "2025-03-26", "2024-11-05"]
@@ -56,12 +57,22 @@ defmodule EmailProviderWeb.MCP do
     {:reply, error(nil, -32600, "Not a JSON-RPC request: a method is required.")}
   end
 
-  defp dispatch("initialize", params, id, _context) do
+  defp dispatch("initialize", params, id, context) do
     version =
       case params["protocolVersion"] do
         v when v in @supported_versions -> v
         _ -> @latest_version
       end
+
+    # The handshake is the one place a client says what it is, and which agent
+    # software has found this server is the whole adoption question.
+    Analytics.report(:run_started,
+      sid: context[:sid],
+      name: client_name(params),
+      client_version: get_in(params, ["clientInfo", "version"]),
+      protocol: version,
+      transport: "mcp"
+    )
 
     result(id, %{
       protocolVersion: version,
@@ -106,7 +117,20 @@ defmodule EmailProviderWeb.MCP do
         )
 
       true ->
-        case Tools.call(name, args, context) do
+        started = System.monotonic_time(:millisecond)
+        outcome = Tools.call(name, args, context)
+
+        # One report for every tool, from the one place they all pass through,
+        # so a tool added later instruments itself.
+        Analytics.report(:tool_called,
+          sid: context[:sid],
+          tool: name,
+          outcome: if(match?({:ok, _}, outcome), do: "success", else: "error"),
+          latency_ms: System.monotonic_time(:millisecond) - started,
+          transport: "mcp"
+        )
+
+        case outcome do
           {:ok, text} -> tool_result(id, text, false)
           {:error, text} -> tool_result(id, text, true)
         end
@@ -114,6 +138,16 @@ defmodule EmailProviderWeb.MCP do
   rescue
     exception ->
       Logger.error("MCP tool #{params["name"]} crashed: #{Exception.message(exception)}")
+
+      # A category, never the message: an exception message can carry the
+      # values that caused it.
+      Analytics.report(:error,
+        sid: context[:sid],
+        kind: inspect(exception.__struct__),
+        tool: params["name"],
+        transport: "mcp"
+      )
+
       tool_result(id, "That tool failed unexpectedly. The failure has been logged.", true)
   end
 
@@ -125,6 +159,15 @@ defmodule EmailProviderWeb.MCP do
 
   defp dispatch(method, _params, id, _context) do
     error(id, -32601, "Unknown method: #{method}")
+  end
+
+  # Only the name the client gave for itself, and only when it is a string —
+  # a client is free to put anything in here.
+  defp client_name(params) do
+    case get_in(params, ["clientInfo", "name"]) do
+      name when is_binary(name) and name != "" -> String.slice(name, 0, 60)
+      _ -> nil
+    end
   end
 
   defp result(id, result), do: %{jsonrpc: "2.0", id: id, result: result}

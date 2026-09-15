@@ -78,3 +78,7 @@ config :email_provider, EmailProviderWeb.Plugs.SignupLimit,
 config :email_provider, EmailProviderWeb.Plugs.ApiAuth,
   requests_per_minute: 1_000_000,
   failures_per_minute: 1_000_000
+
+# No reporting from the suite. The tests that exercise it set their own uid and
+# a plug that answers in-process.
+config :email_provider, EmailProvider.Analytics, uid: nil

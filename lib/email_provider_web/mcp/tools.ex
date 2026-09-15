@@ -225,6 +225,13 @@ defmodule EmailProviderWeb.MCP.Tools do
         {:ok, user} ->
           {:ok, _key, plaintext} = Accounts.create_api_key(user, label: "mcp")
 
+          # The account itself is never described — no address, no name. Only
+          # that one more agent got this far, and by which route.
+          EmailProvider.Analytics.report(:account_created,
+            sid: Map.get(context, :sid),
+            transport: "mcp"
+          )
+
           {:ok,
            """
            Account created for #{user.email}.

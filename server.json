@@ -1,0 +1,18 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.agentemaillist.ai/free-transactional-email-smtp-relay",
+  "title": "Agent Email List — Free SMTP Relay for AI Agents",
+  "description": "Free transactional email + SMTP relay. Agents self-signup, no API key needed to start.",
+  "version": "0.2.0",
+  "websiteUrl": "https://ai.agentemaillist.com",
+  "repository": {
+    "url": "https://github.com/lbesecker195/AI-Agent-Email-List",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://ai.agentemaillist.com/mcp"
+    }
+  ]
+}
