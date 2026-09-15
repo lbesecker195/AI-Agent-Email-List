@@ -62,6 +62,108 @@ defmodule EmailProviderWeb.PageController do
   def app(conn, _params), do: redirect(conn, to: "/domains")
 
   @doc """
+  GET /:slug — one article.
+
+  Everything is rendered at compile time, so this action only assembles the
+  metadata that depends on the request: the canonical URL has to name the host
+  the reader actually reached, or two hostnames pointing here would compete with
+  each other in search results for the same page.
+  """
+  def article(conn, %{"slug" => slug}) do
+    case EmailProviderWeb.Articles.get(slug) do
+      nil ->
+        conn
+        |> put_status(:not_found)
+        |> put_resp_content_type("application/json")
+        |> send_resp(404, Jason.encode!(%{message: "not found"}))
+
+      article ->
+        canonical = base_url(conn) <> "/" <> article.slug
+
+        conn
+        |> put_view(html: EmailProviderWeb.ConsoleHTML)
+        |> render(:article,
+          article: article,
+          canonical: canonical,
+          published_on: pretty_date(article.published),
+          # 200 words a minute is the usual reading estimate for prose.
+          reading_minutes: max(div(article.words, 200), 1),
+          structured_data: structured_data(article, canonical)
+        )
+    end
+  end
+
+  defp pretty_date(iso) do
+    case Date.from_iso8601(iso) do
+      {:ok, date} -> Calendar.strftime(date, "%d %B %Y")
+      _ -> iso
+    end
+  end
+
+  # Schema.org Article, so a search engine has the headline, date and author
+  # without having to infer them from the markup.
+  defp structured_data(article, canonical) do
+    Jason.encode!(
+      %{
+        "@context" => "https://schema.org",
+        "@type" => "Article",
+        "headline" => article.title,
+        "description" => article.description,
+        "datePublished" => article.published,
+        "dateModified" => article.published,
+        "author" => %{"@type" => "Person", "name" => "Logan Besecker"},
+        "publisher" => %{"@type" => "Organization", "name" => "Agent Email List"},
+        "mainEntityOfPage" => %{"@type" => "WebPage", "@id" => canonical},
+        "wordCount" => article.words,
+        "about" => article.keyword
+      },
+      # Escapes < > and & as \u sequences, so no value can close the script tag
+      # early and start writing markup of its own.
+      escape: :html_safe
+    )
+  end
+
+  @doc """
+  GET /sitemap.xml
+
+  Only the pages worth indexing. The console is behind a session and the API is
+  not prose, so neither belongs here.
+  """
+  def sitemap(conn, _params) do
+    base = base_url(conn)
+
+    urls =
+      [
+        %{loc: base <> "/", priority: "1.0"},
+        %{loc: base <> "/llms.txt", priority: "0.5"}
+      ] ++
+        Enum.map(EmailProviderWeb.Articles.all(), fn article ->
+          %{loc: base <> "/" <> article.slug, priority: "0.9", lastmod: article.published}
+        end)
+
+    body =
+      [
+        ~s(<?xml version="1.0" encoding="UTF-8"?>),
+        ~s(<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">),
+        Enum.map(urls, fn url ->
+          [
+            "<url><loc>",
+            url.loc,
+            "</loc>",
+            if(url[:lastmod], do: "<lastmod>#{url.lastmod}</lastmod>", else: ""),
+            "<priority>",
+            url.priority,
+            "</priority></url>"
+          ]
+        end),
+        "</urlset>"
+      ]
+      |> IO.iodata_to_binary()
+
+    conn |> put_resp_content_type("application/xml") |> send_resp(200, body)
+  end
+
+  @doc """
   GET /llms.txt
 
   The agent-facing description of this API.

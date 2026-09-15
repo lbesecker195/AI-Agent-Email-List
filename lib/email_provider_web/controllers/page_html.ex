@@ -72,6 +72,14 @@ defmodule EmailProviderWeb.PageHTML do
       -d 'email=you@company.com' \\
       -d 'password=a sufficiently long password'</code></pre>
 
+      <h2>Read</h2>
+      <ul>
+        <li><a href="/free-smtp-relay">Free SMTP Relay: Mailgun and SendGrid alternatives</a>
+          <span>Which free SMTP services still have a usable free tier in 2026,
+          what changed when SendGrid ended its permanent free plan, and how to
+          migrate off Mailgun without rewriting your integration.</span></li>
+      </ul>
+
       <h2>Reference</h2>
       <ul>
         <li><a href="/llms.txt"><code>/llms.txt</code></a>

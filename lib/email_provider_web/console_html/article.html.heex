@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{@article.title}</title>
+    <meta name="description" content={@article.description} />
+    <link rel="canonical" href={@canonical} />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content={@article.title} />
+    <meta property="og:description" content={@article.description} />
+    <meta property="og:url" content={@canonical} />
+    <meta property="og:site_name" content="Agent Email List" />
+    <meta property="article:published_time" content={@article.published} />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={@article.title} />
+    <meta name="twitter:description" content={@article.description} />
+
+    <link rel="stylesheet" href="/console.css" />
+    <link rel="stylesheet" href="/article.css" />
+    <%!-- HEEx treats the contents of a <script> tag as raw text and does not
+          interpolate there, so building the whole element is the only way to get
+          the JSON in. The JSON itself is encoded with escape: :html_safe, which
+          turns < > and & into \u escapes, so a string value cannot close the
+          tag early and start writing markup. --%>
+    {raw(~s(<script type="application/ld+json">) <> @structured_data <> ~s(</script>))}
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="/">Agent Email List</a>
+        <nav>
+          <a href="/llms.txt">API</a>
+          <a href="/signup">Create an account</a>
+        </nav>
+        <a href="/login">Sign in</a>
+      </div>
+    </div>
+
+    <main class="article">
+      <article>
+        <h1>{@article.heading}</h1>
+        <p class="byline">
+          By Logan Besecker · <time datetime={@article.published}>{@published_on}</time>
+          · {@reading_minutes} minute read
+        </p>
+
+        <nav class="toc" aria-label="Contents">
+          <h2>Contents</h2>
+          <ol>
+            <li :for={section <- @article.sections}>
+              <a href={"##{section.id}"}>{section.text}</a>
+            </li>
+          </ol>
+        </nav>
+
+        {raw(@article.html)}
+      </article>
+
+      <aside class="cta">
+        <h2>Try it</h2>
+        <p>
+          A free SMTP relay with no trial clock. Add a domain, publish two DNS
+          records, and send.
+        </p>
+        <p>
+          <a class="button" href="/signup">Create a free account</a>
+          <a class="button secondary" href="/llms.txt" style="margin-left:0.5rem">Read the API</a>
+        </p>
+      </aside>
+    </main>
+
+    <footer>
+      A free alternative to Mailgun. Built on
+      <a href="https://github.com/lbesecker195/AI-Agent-Email-List">open source</a>, and
+      <a href="/llms.txt">documented for agents</a>.
+    </footer>
+  </body>
+</html>

@@ -69,6 +69,12 @@ defmodule EmailProvider.MixProject do
       # socket: these are plain server-rendered forms. The dependency is what
       # HEEx itself lives in.
       {:phoenix_live_view, "~> 1.0"},
+      # Markdown for the articles in priv/articles, rendered at compile time so
+      # there is no parser in the request path. MDEx rather than Earmark: Earmark
+      # is retired and carries EEF-CVE-2026-48591, a stored XSS through
+      # unescaped HTML attribute values, which is the one thing a renderer
+      # feeding a public page must not have.
+      {:mdex, "~> 0.2"},
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
       {:swoosh, "~> 1.16"},

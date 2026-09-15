@@ -234,11 +234,24 @@ defmodule EmailProviderWeb.Router do
     # Agent-facing description of this API. Unauthenticated on purpose: an
     # agent has to be able to read how to get a key before it has one.
     get "/llms.txt", PageController, :llms
+    get "/sitemap.xml", PageController, :sitemap
   end
 
   scope "/", EmailProviderWeb do
     pipe_through :api
 
     get "/health", HealthController, :show
+  end
+
+  # Articles live at the root so the slug is the keyword and nothing else.
+  #
+  # This must be the last route in the file. A bare ":slug" matches any single
+  # segment, so anything declared below it is unreachable — which is exactly
+  # what happened to /health the first time, and a 404 there would have taken
+  # the deploy script's own health check down with it.
+  scope "/", EmailProviderWeb do
+    pipe_through :public
+
+    get "/:slug", PageController, :article
   end
 end

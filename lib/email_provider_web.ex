@@ -17,7 +17,7 @@ defmodule EmailProviderWeb do
   those modules here.
   """
 
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt console.css)
+  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt console.css article.css)
 
   def router do
     quote do
