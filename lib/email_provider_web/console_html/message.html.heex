@@ -1,0 +1,112 @@
+<.layout title={@message.subject || "(no subject)"} flash={@flash} current_user={@current_user} active={:messages}>
+  <a href="/messages" class="button secondary" style="margin-bottom: 1rem">← Back to inbox</a>
+
+  <h1>{@message.subject || "(no subject)"}</h1>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <p style="margin: 0 0 0.5rem">
+          <strong>{if @message.direction == "outbound", do: "To", else: "From"}</strong>
+          <br />
+          <code class="mono">{if @message.direction == "outbound", do: Enum.join(@message.recipients, ", "), else: @message.sender}</code>
+        </p>
+        <p :if={@message.direction == "outbound" && @message.cc != []} style="margin: 0 0 0.5rem">
+          <strong>Cc</strong>
+          <br />
+          <code class="mono">{Enum.join(@message.cc, ", ")}</code>
+        </p>
+        <p style="margin: 0">
+          <strong>Date</strong>
+          <br />
+          {Calendar.strftime(@message.inserted_at, "%a, %d %b %Y %H:%M:%S")} UTC
+        </p>
+      </div>
+      <div class="grow" style="text-align: right">
+        <div style="margin-bottom: 0.5rem">
+          <span class={if @message.status in ~w(sent delivered), do: "pill active", else: "pill"}>
+            {@message.status}
+          </span>
+          <span :if={@message.test_mode} class="pill active" style="margin-left: 0.5rem">test</span>
+          <span :if={@message.folder == "spam"} class="pill active" style="margin-left: 0.5rem">spam</span>
+        </div>
+        <p class="hint" style="margin: 0">
+          <strong>{@message.domain.name}</strong>
+          <br />
+          ID: <code>{String.slice(@message.id, 0..7)}</code>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <h2>Message body</h2>
+  <div class="card" style="overflow: hidden">
+    <%!--
+      This is somebody else's HTML — an inbound sender's, or whatever an
+      outbound caller passed as the message body. It goes in a fully sandboxed
+      iframe (no scripts, no forms, no same-origin, no top navigation) rather
+      than being rendered into this page, so a message body can never run
+      script or read this session's cookies. no-referrer keeps the sender's
+      own tracking pixels from learning that this message was opened here.
+    --%>
+    <iframe
+      :if={@message.body_html}
+      srcdoc={@message.body_html}
+      sandbox=""
+      referrerpolicy="no-referrer"
+      title="Message body"
+      style="width: 100%; height: 24rem; border: 1px solid var(--line); border-radius: 4px; background: #fff"
+    >
+    </iframe>
+    <pre :if={@message.body_text && !@message.body_html} style="margin: 0">{@message.body_text}</pre>
+    <p :if={!@message.body_html && !@message.body_text} style="margin: 0; color: var(--muted)">(empty)</p>
+  </div>
+
+  <div :if={@message.events != []}>
+    <h2>Delivery events</h2>
+    <div class="scroll">
+      <table>
+        <tr>
+          <th>Type</th>
+          <th>Recipient</th>
+          <th>When</th>
+          <th>Details</th>
+        </tr>
+        <tr :for={event <- @message.events}>
+          <td>{event.type}</td>
+          <td class="mono">{event.recipient}</td>
+          <td class="hint">{Calendar.strftime(event.occurred_at, "%d %b %H:%M:%S")}</td>
+          <td>
+            <code :if={event.payload && map_size(event.payload) > 0} style="font-size: 0.75rem; word-break: break-all">
+              {inspect(event.payload, pretty: true) |> String.slice(0..100)}{if String.length(inspect(event.payload)) > 100, do: "…"}
+            </code>
+            <span :if={!event.payload || map_size(event.payload) == 0} class="hint">—</span>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div :if={@message.moderation_checked_at}>
+    <h2>Moderation</h2>
+    <div class="card">
+      <p>
+        <strong>Status:</strong>
+        {if @message.moderation_flagged, do: "Flagged", else: "Approved"}
+        <span class="hint">
+          ({Calendar.strftime(@message.moderation_checked_at, "%d %b %H:%M")})
+        </span>
+      </p>
+      <p :if={@message.moderation_action}>
+        <strong>Action:</strong>
+        {String.capitalize(@message.moderation_action)}
+      </p>
+      <p :if={@message.moderation_categories != []}>
+        <strong>Categories:</strong>
+        <br />
+        {Enum.join(@message.moderation_categories, ", ")}
+      </p>
+    </div>
+  </div>
+
+</.layout>

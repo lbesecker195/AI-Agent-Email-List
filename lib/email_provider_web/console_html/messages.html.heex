@@ -16,14 +16,20 @@
         <th>Status</th>
       </tr>
       <tr :for={message <- @messages}>
-        <td class="hint">{Calendar.strftime(message.inserted_at, "%d %b %H:%M")}</td>
+        <td class="hint">
+          <a href={"/messages/#{message.id}"}>
+            {Calendar.strftime(message.inserted_at, "%d %b %H:%M")}
+          </a>
+        </td>
         <td>{message.direction}</td>
         <td class="mono">
           {if message.direction == "outbound",
             do: Enum.join(message.recipients, ", "),
             else: message.sender}
         </td>
-        <td>{message.subject}</td>
+        <td>
+          <a href={"/messages/#{message.id}"}>{message.subject}</a>
+        </td>
         <td>
           {message.status}<span :if={message.test_mode} class="hint"> (test)</span><span
             :if={message.folder == "spam"}

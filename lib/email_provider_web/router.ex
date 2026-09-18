@@ -253,6 +253,7 @@ defmodule EmailProviderWeb.Router do
     post "/send", ConsoleController, :send_message
 
     get "/messages", ConsoleController, :messages
+    get "/messages/:id", ConsoleController, :message
 
     get "/account", ConsoleController, :account
     post "/account/keys", ConsoleController, :create_key

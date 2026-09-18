@@ -259,6 +259,108 @@ defmodule EmailProviderWeb.ConsoleControllerTest do
     end
   end
 
+  describe "message detail" do
+    setup %{conn: conn} do
+      user = account()
+      domain = domain_fixture(user)
+      %{conn: sign_in(conn, user), user: user, domain: domain}
+    end
+
+    test "a row in the inbox links to its detail page", %{conn: conn, user: user, domain: domain} do
+      {:ok, [message]} =
+        EmailProvider.Mail.send_message(
+          user,
+          domain,
+          send_params(domain, %{"subject" => "Clickable subject"})
+        )
+
+      body = conn |> get("/messages") |> html_response(200)
+
+      assert body =~ "/messages/#{message.id}"
+      assert body =~ "Clickable subject"
+    end
+
+    test "shows the body, correspondents, and status of a sent message", %{
+      conn: conn,
+      user: user,
+      domain: domain
+    } do
+      {:ok, [message]} =
+        EmailProvider.Mail.send_message(
+          user,
+          domain,
+          send_params(domain, %{"subject" => "Full detail", "text" => "The message body."})
+        )
+
+      body = conn |> get("/messages/#{message.id}") |> html_response(200)
+
+      assert body =~ "Full detail"
+      assert body =~ "The message body."
+      assert body =~ "recipient@elsewhere.test"
+      assert body =~ message.status
+    end
+
+    test "shows an inbound message's sender rather than a recipient list", %{
+      user: user,
+      domain: domain
+    } do
+      {:ok, message} =
+        EmailProvider.Mail.receive_message(domain, %{
+          sender: "someone@elsewhere.test",
+          recipients: ["me@#{domain.name}"],
+          subject: "Inbound",
+          text: "Hello from outside."
+        })
+
+      owner_conn = build_conn() |> sign_in(user)
+      body = owner_conn |> get("/messages/#{message.id}") |> html_response(200)
+
+      assert body =~ "someone@elsewhere.test"
+    end
+
+    test "renders an HTML body inside a sandbox rather than executing it", %{
+      conn: conn,
+      user: user,
+      domain: domain
+    } do
+      {:ok, [message]} =
+        EmailProvider.Mail.send_message(
+          user,
+          domain,
+          send_params(domain, %{
+            "subject" => "HTML body",
+            "html" => "<p>Hello <strong>there</strong></p><script>alert(1)</script>"
+          })
+        )
+
+      body = conn |> get("/messages/#{message.id}") |> html_response(200)
+
+      # The body is escaped into an iframe's srcdoc attribute, not rendered
+      # into the page — so a literal, live <script> tag must never appear.
+      assert body =~ "sandbox=\"\""
+      assert body =~ "srcdoc="
+      refute body =~ "<script>alert(1)</script>"
+    end
+
+    test "cannot be viewed by another account", %{user: user, domain: domain} do
+      {:ok, [message]} = EmailProvider.Mail.send_message(user, domain, send_params(domain))
+
+      stranger = account()
+      conn = build_conn() |> sign_in(stranger) |> get("/messages/#{message.id}")
+
+      assert redirected_to(conn) == "/messages"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "not found"
+    end
+
+    test "a nonexistent or malformed id redirects rather than erroring", %{conn: conn} do
+      conn = get(conn, "/messages/not-a-uuid")
+      assert redirected_to(conn) == "/messages"
+
+      conn = get(build_conn() |> sign_in(account()), "/messages/#{Ecto.UUID.generate()}")
+      assert redirected_to(conn) == "/messages"
+    end
+  end
+
   describe "api keys" do
     setup %{conn: conn} do
       user = account()

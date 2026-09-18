@@ -532,6 +532,33 @@ defmodule EmailProvider.Mail do
     Repo.one(from m in Message, where: m.domain_id == ^id and m.storage_key == ^storage_key)
   end
 
+  @doc """
+  One message by id, scoped to the account that owns it, with its domain and
+  delivery events preloaded.
+
+  For the console detail page rather than the REST API: the API is scoped to a
+  domain already (the URL carries it), but a person clicking a row in their
+  unified inbox has not chosen a domain, so this checks ownership on the
+  message itself instead. Returns nil for a message that does not exist or
+  belongs to somebody else — the two cases are indistinguishable on purpose.
+  """
+  def get_user_message(%EmailProvider.Accounts.User{id: user_id}, id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} ->
+        Repo.one(
+          from m in Message,
+            where: m.id == ^id and m.user_id == ^user_id,
+            preload: [
+              :domain,
+              events: ^from(e in EmailProvider.Mail.Event, order_by: e.occurred_at)
+            ]
+        )
+
+      :error ->
+        nil
+    end
+  end
+
   @doc "Events for a domain, newest first, with the filters the events API exposes."
   def list_events(%Domain{id: id}, filters \\ %{}) do
     limit = filters |> Map.get("limit", "100") |> to_string() |> String.to_integer() |> min(300)

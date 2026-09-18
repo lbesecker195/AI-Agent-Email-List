@@ -167,6 +167,16 @@ defmodule EmailProviderWeb.ConsoleController do
     render(conn, :messages, messages: messages)
   end
 
+  def message(conn, %{"id" => id}) do
+    case Mail.get_user_message(conn.assigns.current_user, id) do
+      nil ->
+        conn |> put_flash(:error, "Message not found.") |> redirect(to: "/messages")
+
+      message ->
+        render(conn, :message, message: message)
+    end
+  end
+
   # -- account -------------------------------------------------------------
 
   def account(conn, _params) do
