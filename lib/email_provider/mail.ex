@@ -15,6 +15,13 @@ defmodule EmailProvider.Mail do
   Screening comes before reservation on purpose: a message we are going to
   refuse should not spend any of the domain's daily allowance.
 
+  "Screen the content" is two independent checks, run in sequence and then
+  combined: `Moderation` (harmful content) and `SpamFilter` (unsolicited bulk,
+  phishing, scams — the thing most people mean by "spam", which is not the
+  same axis as harmful). Either one flagging a message is enough to act on it,
+  and their categories and scores are unioned rather than one replacing the
+  other, so the record shows every reason a message was caught.
+
   Inbound is the same screening with a gentler consequence — a flagged message
   is filed in spam rather than refused, because a false positive on incoming
   mail loses somebody a real message.
@@ -28,6 +35,7 @@ defmodule EmailProvider.Mail do
     Profiles,
     Repo,
     Routes,
+    SpamFilter,
     Suppressions,
     Templates,
     Warmup,
@@ -151,15 +159,20 @@ defmodule EmailProvider.Mail do
   end
 
   defp screen_outbound(user, domain, %Params{} = params) do
-    verdict =
-      [params.subject, params.text, strip_html(params.html)]
-      |> Moderation.check()
+    parts = [params.subject, params.text, strip_html(params.html)]
 
-    case Moderation.decide(verdict, :outbound) do
-      {:allow, verdict} ->
+    {content_action, content_verdict} =
+      parts |> Moderation.check() |> Moderation.decide(:outbound)
+
+    {spam_action, spam_verdict} = parts |> SpamFilter.check() |> SpamFilter.decide(:outbound)
+
+    verdict = merge_verdict(content_verdict, spam_verdict)
+
+    case {content_action, spam_action} do
+      {:allow, :allow} ->
         {:ok, params, verdict}
 
-      {:block, verdict} ->
+      _ ->
         record_refusal(user, domain, params, verdict)
 
         {:error, :content_rejected,
@@ -171,6 +184,26 @@ defmodule EmailProvider.Mail do
          }}
     end
   end
+
+  # Either screener flagging something is enough to act on it. Categories and
+  # scores are unioned rather than one replacing the other, so a message both
+  # screeners caught still shows why, and a dashboard reading `categories`
+  # sees moderation's and the spam filter's vocabulary side by side rather
+  # than one silently overwriting the other.
+  defp merge_verdict(a, b) do
+    %{
+      flagged: a.flagged or b.flagged,
+      categories: Enum.uniq(a.categories ++ b.categories) |> Enum.sort(),
+      scores: Map.merge(a.scores, b.scores),
+      checked_at: later(a.checked_at, b.checked_at),
+      screened: a.screened or b.screened
+    }
+  end
+
+  defp later(nil, nil), do: nil
+  defp later(nil, t), do: t
+  defp later(t, nil), do: t
+  defp later(t1, t2), do: if(DateTime.compare(t1, t2) == :lt, do: t2, else: t1)
 
   # A refused message is still recorded, with status "rejected" and never
   # queued. Two things depend on it: the operator dashboard could not previously
@@ -443,11 +476,15 @@ defmodule EmailProvider.Mail do
   customer's webhook helps nobody.
   """
   def receive_message(%Domain{} = domain, attrs) do
-    verdict =
-      [attrs[:subject], attrs[:text], strip_html(attrs[:html])]
-      |> Moderation.check()
+    parts = [attrs[:subject], attrs[:text], strip_html(attrs[:html])]
 
-    {decision, verdict} = Moderation.decide(verdict, :inbound)
+    {content_decision, content_verdict} =
+      parts |> Moderation.check() |> Moderation.decide(:inbound)
+
+    {spam_decision, spam_verdict} = parts |> SpamFilter.check() |> SpamFilter.decide(:inbound)
+
+    decision = if :spam in [content_decision, spam_decision], do: :spam, else: :allow
+    verdict = merge_verdict(content_verdict, spam_verdict)
     folder = if decision == :spam, do: "spam", else: "inbox"
 
     message =

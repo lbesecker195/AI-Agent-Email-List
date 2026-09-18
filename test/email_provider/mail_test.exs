@@ -39,6 +39,34 @@ defmodule EmailProvider.MailTest do
     on_exit(fn -> Application.put_env(:email_provider, EmailProvider.Moderation, previous) end)
   end
 
+  # Same idea, pointed at the Claude client instead: a Plug standing in for
+  # Anthropic's Messages API, returning a forced tool_use block.
+  defp stub_spam_filter(is_spam: is_spam, category: category) do
+    previous = Application.get_env(:email_provider, EmailProvider.SpamFilter, [])
+
+    body = %{
+      "content" => [
+        %{
+          "type" => "tool_use",
+          "name" => "classify_spam",
+          "input" => %{"is_spam" => is_spam, "category" => category, "confidence" => 0.97}
+        }
+      ]
+    }
+
+    Application.put_env(:email_provider, EmailProvider.SpamFilter,
+      enabled: true,
+      api_key: "test-key",
+      plug: fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(200, Jason.encode!(body))
+      end
+    )
+
+    on_exit(fn -> Application.put_env(:email_provider, EmailProvider.SpamFilter, previous) end)
+  end
+
   describe "sending" do
     test "queues a valid message", %{user: user, domain: domain} do
       assert {:ok, [message]} = Mail.send_message(user, domain, send_params(domain))
@@ -295,6 +323,74 @@ defmodule EmailProvider.MailTest do
       assert {:ok, [message]} = Mail.send_message(user, domain, send_params(domain))
       assert message.moderation_action == "not_screened"
       assert is_nil(message.moderation_checked_at)
+    end
+  end
+
+  describe "spam filtering" do
+    test "refuses outbound content the spam filter flags, even when moderation is clean",
+         %{user: user, domain: domain} do
+      stub_moderation(flagged: false, categories: [])
+      stub_spam_filter(is_spam: true, category: "phishing")
+
+      assert {:error, :content_rejected, details} =
+               Mail.send_message(user, domain, send_params(domain))
+
+      assert "phishing" in details.categories
+      assert Warmup.sent_today(domain) == 0
+
+      assert [message] = Repo.all(Message)
+      assert message.status == "rejected"
+      assert message.moderation_flagged
+      assert "phishing" in message.moderation_categories
+    end
+
+    test "an inbound message the spam filter flags is filed in spam, not dropped", %{
+      domain: domain
+    } do
+      stub_moderation(flagged: false, categories: [])
+      stub_spam_filter(is_spam: true, category: "bulk_unsolicited")
+
+      assert {:ok, message} =
+               Mail.receive_message(domain, %{
+                 sender: "deals@bulk-mailer.test",
+                 recipients: ["inbox@#{domain.name}"],
+                 subject: "You won't believe this offer",
+                 text: "Buy now, limited time only"
+               })
+
+      assert message.folder == "spam"
+      assert message.moderation_action == "filed_spam"
+      assert "bulk_unsolicited" in message.moderation_categories
+    end
+
+    test "a message both screeners clear sends normally, with both counted as screened",
+         %{user: user, domain: domain} do
+      stub_moderation(flagged: false, categories: [])
+      stub_spam_filter(is_spam: false, category: "none")
+
+      assert {:ok, [message]} = Mail.send_message(user, domain, send_params(domain))
+      refute message.moderation_flagged
+      assert message.moderation_action == "allowed"
+    end
+
+    test "a spam-filter outage does not stop the send by default", %{user: user, domain: domain} do
+      stub_moderation(flagged: false, categories: [])
+      previous = Application.get_env(:email_provider, EmailProvider.SpamFilter, [])
+
+      Application.put_env(:email_provider, EmailProvider.SpamFilter,
+        enabled: true,
+        api_key: "test-key",
+        on_error: :allow,
+        plug: fn conn -> Plug.Conn.resp(conn, 500, "the model is down") end
+      )
+
+      on_exit(fn -> Application.put_env(:email_provider, EmailProvider.SpamFilter, previous) end)
+
+      assert {:ok, [message]} = Mail.send_message(user, domain, send_params(domain))
+      # Moderation screened it clean, so the merged verdict still reads
+      # "allowed" — the outage cost nothing here, which is exactly the point
+      # of running two independent screeners.
+      assert message.moderation_action == "allowed"
     end
   end
 

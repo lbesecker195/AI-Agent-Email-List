@@ -84,6 +84,14 @@ config :email_provider, EmailProvider.Moderation,
   model: "omni-moderation-latest",
   on_error: :allow
 
+# Spam — a second, independent screener alongside the one above. See
+# EmailProvider.SpamFilter's moduledoc for why moderation alone does not
+# catch it.
+config :email_provider, EmailProvider.SpamFilter,
+  enabled: true,
+  model: "claude-haiku-4-5-20251001",
+  on_error: :allow
+
 # -- Account profiles ---------------------------------------------------------
 #
 # A rolling ~200 word description of each account holder, rewritten from their

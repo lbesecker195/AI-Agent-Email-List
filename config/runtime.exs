@@ -105,6 +105,17 @@ if config_env() != :test do
     model: System.get_env("MODERATION_MODEL", "omni-moderation-latest"),
     on_error: if(System.get_env("MODERATION_ON_ERROR") == "block", do: :block, else: :allow)
 
+  # Spam, as distinct from harmful content — see EmailProvider.SpamFilter's
+  # moduledoc for why this is a second screener rather than folded into the
+  # one above. Off (allowed through unscreened) with no key set, same as
+  # moderation, so the service still runs for anyone who has not set up
+  # Claude billing yet.
+  config :email_provider, EmailProvider.SpamFilter,
+    enabled: System.get_env("SPAM_FILTER_ENABLED", "true") == "true",
+    api_key: present.("ANTHROPIC_API_KEY"),
+    model: System.get_env("SPAM_FILTER_MODEL", "claude-haiku-4-5-20251001"),
+    on_error: if(System.get_env("SPAM_FILTER_ON_ERROR") == "block", do: :block, else: :allow)
+
   # -- Outbound --------------------------------------------------------------
   #
   # Three ways out, in order of how much was configured. A smarthost if one is

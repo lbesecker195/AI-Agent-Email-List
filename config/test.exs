@@ -38,9 +38,16 @@ config :phoenix, :plug_init_mode, :runtime
 config :phoenix,
   sort_verified_routes_query_params: true
 
-# Never reach the network in test: no live moderation call, no dispatch loop
-# waking up underneath a test, and a sender that writes to a temp directory.
+# Never reach the network in test: no live moderation or spam-filter call, no
+# dispatch loop waking up underneath a test, and a sender that writes to a
+# temp directory.
+#
+# Explicit `enabled: false` rather than relying on the key being unset: a
+# developer's shell (or CI secrets) may well export a real ANTHROPIC_API_KEY
+# or OPENAI_API_KEY for other tools, and without this the test suite would
+# make live, billed calls to both APIs on every message sent or received.
 config :email_provider, EmailProvider.Moderation, enabled: false
+config :email_provider, EmailProvider.SpamFilter, enabled: false
 
 config :email_provider, EmailProvider.Delivery.Queue, enabled: false, max_concurrency: 1
 
