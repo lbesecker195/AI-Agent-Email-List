@@ -1,0 +1,32 @@
+# Every ten minutes, check whether main has moved and deploy it if so.
+#
+# The check is cheap — a `git fetch` and a SHA comparison — and exits without
+# building when nothing has changed, so the usual cost of a tick is a second
+# and one line in the journal.
+#
+#   sudo systemctl enable --now email-provider-autodeploy.timer
+#   systemctl list-timers email-provider-autodeploy   # when it next fires
+#   sudo systemctl stop email-provider-autodeploy.timer     # pause it
+#   sudo systemctl start email-provider-autodeploy.service  # deploy right now
+
+[Unit]
+Description=Check for new Agent Email List commits every ten minutes
+
+[Timer]
+# First run shortly after boot rather than immediately, so a reboot does not
+# start a release build while the machine is still bringing services up.
+OnBootSec=3min
+OnUnitActiveSec=10min
+
+# Anchors the schedule to wall-clock ten-minute marks instead of drifting by
+# however long each run takes.
+AccuracySec=30s
+
+# If the machine was asleep or down when a run was due, do it on the way back
+# up rather than waiting for the next mark.
+Persistent=true
+
+Unit=email-provider-autodeploy.service
+
+[Install]
+WantedBy=timers.target

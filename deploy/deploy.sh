@@ -504,6 +504,17 @@ bold "  Service"
 echo "    systemctl status $SERVICE"
 echo "    journalctl -u $SERVICE -f"
 echo
+
+bold "  Continuous deploys (off by default)"
+echo "    A push to main does not reach this box on its own. To have it pull,"
+echo "    build and restart itself every ten minutes when main has moved:"
+echo "      sudo cp deploy/email-provider-autodeploy.{service,timer} /etc/systemd/system/"
+echo "      sudo systemctl daemon-reload"
+echo "      sudo systemctl enable --now email-provider-autodeploy.timer"
+echo "    It refuses to deploy a tree that does not compile, so a bad push"
+echo "    leaves the running site untouched. journalctl -t email-provider-deploy -f"
+echo
+
 bold "  Operator dashboard"
 if [[ $DO_SSL -eq 1 ]]; then
   echo "    https://$DOMAIN/admin"

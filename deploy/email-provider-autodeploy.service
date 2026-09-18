@@ -1,0 +1,39 @@
+# Runs deploy/autodeploy.sh once. The timer beside this file starts it every
+# ten minutes; `systemctl start email-provider-autodeploy` runs it on demand.
+# Same unit either way, so a manual deploy and a timed one cannot behave
+# differently.
+#
+#   sudo cp deploy/email-provider-autodeploy.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now email-provider-autodeploy.timer
+
+[Unit]
+Description=Deploy Agent Email List if main has moved
+# Nothing to deploy to if the network is not up yet.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+
+# Root: it restarts the service and reads /etc/email-provider.env, which is
+# root-owned. The script does the privileged parts and nothing else, dropping
+# to the mailer user for the build and the migration.
+User=root
+
+WorkingDirectory=/var/www/HoneyTrap/AI-Agent-Email-List
+ExecStart=/usr/bin/env bash /var/www/HoneyTrap/AI-Agent-Email-List/deploy/autodeploy.sh
+
+# A build plus a restart plus ten health checks. If it has not finished in
+# fifteen minutes something is wrong, and a hung deploy should not block the
+# next one forever.
+TimeoutStartSec=900
+
+# Everything the script logs goes to the journal, tagged so it is greppable:
+#   journalctl -t email-provider-deploy -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=email-provider-deploy
+
+[Install]
+WantedBy=multi-user.target
